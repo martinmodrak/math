@@ -20,7 +20,7 @@ namespace math {
 inline double finite_diff_stepsize(double u) {
   static const double cbrt_epsilon
       = std::cbrt(std::numeric_limits<double>::epsilon());
-  return cbrt_epsilon * std::fmax(1, fabs(u));
+  return cbrt_epsilon * std::fmax(1, std::fabs(u));
 }
 }  // namespace math
 }  // namespace stan

@@ -13,6 +13,7 @@
 
 #include <stan/math/rev/scal/fun/exp.hpp>
 #include <stan/math/prim/scal/fun/exp.hpp>
+#include <stan/math/prim/scal/fun/log_sum_exp.hpp>
 
 #include <stan/math/rev/scal/meta/is_var.hpp>
 #include <stan/math/prim/scal/meta/return_type.hpp>
@@ -209,16 +210,60 @@ T_v asymptotic_large_z(const T_v &v, const double &z) {
   return 0.5 * (log(pi()) - log(2) - log(z)) - z + log(series_sum);
 }
 
+template <typename T_v>
+inline T_v log_integral_gamma_func(const T_v &v, const double &z, const double &t) {
+    return (v - 1.0) * std::log(t) - 0.5 * z * (t + 1.0 / t);
+}
+
+template <typename T_v>
+T_v integral_gamma(const T_v &v, const double &z) {
+  using std::log;
+  using std::pow;
+
+  //auto integrand = [&](T_v t) { return std::pow(t, v - 1) * std::exp(-0.5 * z * (t + 1 / t)); };
+  using std::cosh;  using std::exp;
+  auto f = [&, v, z](double t)
+  {
+    T_v log_value = log_integral_gamma_func(v, z, t);
+    T_v value = 0.5 * std::exp(log_value);
+    if(!std::isfinite(std::abs(value))) {
+      std::cout << v << " " << z << " " << t << std::endl;
+    }
+    return value;
+  };
+  boost::math::quadrature::exp_sinh<double> integrator;
+  return std::log(integrator.integrate(f));  
+}
+
+template <>
+var integral_gamma(const var &v, const double &z) {
+  double value = integral_gamma(value_of(v), z);
+  typedef std::complex<double> Complex;
+  auto complex_func
+      = [z](const Complex &complex_v) { return integral_gamma(complex_v, z); };
+
+  double d_dv = boost::math::tools::complex_step_derivative(
+      complex_func, stan::math::value_of(v));
+
+  return var(new precomp_v_vari(value, v.vi_, d_dv)); 
+}
+
 ////////////////////////////////////////////////////////////////
 //                    CHOOSING AMONG FORMULAE                 //
 ////////////////////////////////////////////////////////////////
 
 // The code to choose computation method is separate, because it is
 // referenced from the test code.
-enum class ComputationType { Rothwell, Asymp_v, Asymp_z };
+enum class ComputationType { Rothwell, Asymp_v, Asymp_z, IntegralGamma };
 
 const double rothwell_max_v = 50;
 const double rothwell_max_log_z_over_v = 300;
+
+const double gamma_max_z = 800;
+const double gamma_max_log_max = 50;
+const double gamma_low_z = 0.01;
+const double gamma_low_v = 0.001;
+
 const double small_z_factor = 10;
 const double small_z_min_v = 15;
 
@@ -230,8 +275,14 @@ inline ComputationType choose_computation_type(const double &v,
   const double rothwell_log_z_boundary
       = rothwell_max_log_z_over_v / (v_ - 0.5) - log(2);
 
+  const double gamma_maximum_t = (std::sqrt(v_ * v_ - 2*v_ + z*z + 1) + v_ - 1) / z;
+
   if (v_ >= small_z_min_v && z * small_z_factor < sqrt(v_ + 1)) {
     return ComputationType::Asymp_v;
+  } else if (z < gamma_max_z &&  
+     (v_ > gamma_low_v || z > gamma_low_z) &&
+     log_integral_gamma_func(v_, z, gamma_maximum_t) < gamma_max_log_max) {
+    return ComputationType::IntegralGamma;
   } else if (v_ < rothwell_max_v
              && (v_ <= 0.5 || log(z) < rothwell_log_z_boundary)) {
     return ComputationType::Rothwell;
@@ -240,6 +291,8 @@ inline ComputationType choose_computation_type(const double &v,
   } else {
     return ComputationType::Asymp_z;
   }
+
+  //return ComputationType::IntegralGamma;
 }
 
 ////////////////////////////////////////////////////////////////
@@ -270,6 +323,7 @@ T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z) {
   using besselk_internal::ComputationType;
   using besselk_internal::asymptotic_large_v;
   using besselk_internal::asymptotic_large_z;
+  using besselk_internal::integral_gamma;
   using besselk_internal::check_params;
   using besselk_internal::choose_computation_type;
   using besselk_internal::compute_rothwell;
@@ -292,6 +346,9 @@ T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z) {
     }
     case ComputationType::Asymp_z: {
       return asymptotic_large_z(v_, z);
+    }
+    case ComputationType::IntegralGamma: {
+      return integral_gamma(v_, z);
     }
     default: {
       stan::math::domain_error("log_modified_bessel_second_kind_frac",
