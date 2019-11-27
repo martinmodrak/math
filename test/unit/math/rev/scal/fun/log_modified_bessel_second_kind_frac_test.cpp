@@ -74,6 +74,8 @@ const char* computation_type_to_string(ComputationType c) {
       return "Asymp_z";
     case ComputationType::IntegralGamma:
       return "z_Integral_Gamma";
+    case ComputationType::Rothwell_24:
+      return "z_Rothwell_24";
     default:
       return "Unknown";
   }

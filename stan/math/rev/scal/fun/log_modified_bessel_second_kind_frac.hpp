@@ -232,7 +232,7 @@ T_v integral_gamma(const T_v &v, const double &z) {
     return value;
   };
   boost::math::quadrature::exp_sinh<double> integrator;
-  return std::log(integrator.integrate(f));  
+  return std::log(integrator.integrate(f));
 }
 
 template <>
@@ -245,7 +245,67 @@ var integral_gamma(const var &v, const double &z) {
   double d_dv = boost::math::tools::complex_step_derivative(
       complex_func, stan::math::value_of(v));
 
-  return var(new precomp_v_vari(value, v.vi_, d_dv)); 
+  return var(new precomp_v_vari(value, v.vi_, d_dv));
+}
+
+//Formula 24 of Rothwell
+template <typename T_v>
+inline T_v log_integral_rothwell_24_func(const T_v &v_mhalf, const double &z, const long double &t) {
+  return -t + std::log(t) * v_mhalf + std::log1p(t / (2 * z)) * v_mhalf ;
+}
+
+template <typename T_v>
+T_v integral_rothwell_24(const T_v &v, const double &z) {
+  using std::log;
+
+  using std::exp;
+  T_v v_mhalf = v - 0.5;
+  auto f = [&, v_mhalf, z](long double t)
+  {
+    T_v log_value = log_integral_rothwell_24_func(v_mhalf, z, t);
+    T_v value = std::exp(log_value);
+    if(!std::isfinite(std::abs(value))) {
+      std::cout << v << " " << z << " " << t << std::endl;
+    }
+    return value;
+  };
+  boost::math::quadrature::exp_sinh<long double> integrator;
+  T_v inner_integral = std::log(integrator.integrate(f));
+  return 0.5 * (log(pi()) - log(2) - log(z)) -z -std::lgamma(v_mhalf) + inner_integral;
+}
+
+//Ugly hach to have complex step working. Should be removed and complex
+//step replaced with autodiff
+template <>
+var integral_rothwell_24(const var &v, const double &z) {
+  double value = integral_rothwell_24(value_of(v), z);
+  typedef std::complex<long double> Complex;
+  auto complex_func
+    = [&z](const Complex &complex_v) {
+        using std::log;
+
+        using std::exp;
+        const Complex v_mhalf = complex_v - Complex(0.5, 0);
+        auto f = [&](long double t)
+        {
+          Complex log_value = log_integral_rothwell_24_func(v_mhalf, z, t);
+          Complex value = std::exp(log_value);
+          if(!std::isfinite(std::abs(value))) {
+            std::cout << complex_v << " " << z << " " << t << std::endl;
+          }
+          return value;
+        };
+        boost::math::quadrature::exp_sinh<long double> integrator;
+        Complex inner_integral = std::log(integrator.integrate(f));
+        return Complex(0.5 * (log(pi()) - log(2) - log(z)) -z -std::lgamma(complex_v.real() + 0.5) + inner_integral.real(),
+          - complex_v.imag() * boost::math::digamma(complex_v.real() + 0.5)
+          + inner_integral.imag());
+      };
+
+    double d_dv = boost::math::tools::complex_step_derivative(
+      complex_func, static_cast<long double>(stan::math::value_of(v)));
+
+    return var(new precomp_v_vari(value, v.vi_, d_dv));
 }
 
 ////////////////////////////////////////////////////////////////
@@ -254,7 +314,7 @@ var integral_gamma(const var &v, const double &z) {
 
 // The code to choose computation method is separate, because it is
 // referenced from the test code.
-enum class ComputationType { Rothwell, Asymp_v, Asymp_z, IntegralGamma };
+enum class ComputationType { Rothwell, Asymp_v, Asymp_z, IntegralGamma, Rothwell_24 };
 
 const double rothwell_max_v = 50;
 const double rothwell_max_log_z_over_v = 300;
@@ -263,6 +323,8 @@ const double gamma_max_z = 800;
 const double gamma_max_log_max = 50;
 const double gamma_low_z = 0.01;
 const double gamma_low_v = 0.001;
+
+const double rothwell_24_max_log_max = 300;
 
 const double small_z_factor = 10;
 const double small_z_min_v = 15;
@@ -276,13 +338,18 @@ inline ComputationType choose_computation_type(const double &v,
       = rothwell_max_log_z_over_v / (v_ - 0.5) - log(2);
 
   const double gamma_maximum_t = (std::sqrt(v_ * v_ - 2*v_ + z*z + 1) + v_ - 1) / z;
+  const double rothwell_24_maximum_t = 0.5 * (std::sqrt(4 * v_ * v_ - 4 * v_ + 4 * z * z + 1) + 2 * v_ - 2 * z - 1);
 
   if (v_ >= small_z_min_v && z * small_z_factor < sqrt(v_ + 1)) {
     return ComputationType::Asymp_v;
-  } else if (z < gamma_max_z &&  
-     (v_ > gamma_low_v || z > gamma_low_z) &&
-     log_integral_gamma_func(v_, z, gamma_maximum_t) < gamma_max_log_max) {
-    return ComputationType::IntegralGamma;
+  } else if (z < gamma_max_z &&
+      (v_ > gamma_low_v || z > gamma_low_z) &&
+      log_integral_gamma_func(v_, z, gamma_maximum_t) < gamma_max_log_max) {
+           return ComputationType::IntegralGamma;
+  } else if (z < gamma_max_z &&
+    (v_ > 0.5 || z > gamma_low_z) &&
+    log_integral_rothwell_24_func(v_, z, rothwell_24_maximum_t) < rothwell_24_max_log_max) {
+          return ComputationType::Rothwell_24;
   } else if (v_ < rothwell_max_v
              && (v_ <= 0.5 || log(z) < rothwell_log_z_boundary)) {
     return ComputationType::Rothwell;
@@ -324,6 +391,7 @@ T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z) {
   using besselk_internal::asymptotic_large_v;
   using besselk_internal::asymptotic_large_z;
   using besselk_internal::integral_gamma;
+  using besselk_internal::integral_rothwell_24;
   using besselk_internal::check_params;
   using besselk_internal::choose_computation_type;
   using besselk_internal::compute_rothwell;
@@ -349,6 +417,9 @@ T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z) {
     }
     case ComputationType::IntegralGamma: {
       return integral_gamma(v_, z);
+    }
+    case ComputationType::Rothwell_24: {
+      return integral_rothwell_24(v_, z);
     }
     default: {
       stan::math::domain_error("log_modified_bessel_second_kind_frac",
