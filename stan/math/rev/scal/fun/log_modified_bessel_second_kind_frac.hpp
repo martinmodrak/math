@@ -13,7 +13,8 @@
 
 #include <stan/math/rev/scal/fun/exp.hpp>
 #include <stan/math/prim/scal/fun/exp.hpp>
-#include <stan/math/prim/scal/fun/log_sum_exp.hpp>
+#include <stan/math/prim/scal/fun/log_diff_exp.hpp>
+#include <stan/math/rev/arr/fun/log_sum_exp.hpp>
 
 #include <stan/math/rev/scal/meta/is_var.hpp>
 #include <stan/math/prim/scal/meta/return_type.hpp>
@@ -191,28 +192,51 @@ T_v asymptotic_large_z(const T_v &v, const double &z) {
   using std::log;
   using std::pow;
 
-  const int max_terms = 10;
-
-  T_v series_sum(1);
-  T_v a_k_z_k(1);
+  //const int max_terms = 1000;
+  const int max_terms = std::min(1000, static_cast<int>(floor(value_of(v) + 0.5)));
 
   double log_z = log(z);
-  T_v v_squared_4 = v * v * 4;
+  T_v base = 0.5 * (log(pi()) - log(2) - log_z) - z; 
 
+  std::vector<T_v> log_sum_terms;
+  log_sum_terms.reserve(max_terms);
+  log_sum_terms.push_back(0);
+  
+  T_v log_v_sq_4 = 2 * (log(v) + log(2));
+  T_v log_a_k_z_k = 0;  
   for (int k = 1; k < max_terms; k++) {
-    a_k_z_k *= (v_squared_4 - boost::math::pow<2>(2 * k - 1)) / (k * z * 8);
-    series_sum += a_k_z_k;
-    if (fabs(a_k_z_k) < 1e-8) {
-      break;
-    }
+    log_a_k_z_k += log_diff_exp(log_v_sq_4, 2 * log(2 * k - 1)) - log(k) - log(z) - log(8);
+    log_sum_terms.push_back(log_a_k_z_k);
+    //TODO figure out a good stopping criterion
+    // if(log_a_k_z_k < 30) {
+    //   break;
+    // }
   }
+  return base + log_sum_exp(log_sum_terms);
 
-  return 0.5 * (log(pi()) - log(2) - log(z)) - z + log(series_sum);
+
+  // T_v series_sum(1);
+  // T_v a_k_z_k(1);
+  // const T_v v_squared_4 = v * v * 4;
+  
+  // for (int k = 1; k < max_terms; k++) {
+  //   a_k_z_k *= (v_squared_4 - boost::math::pow<2>(2 * k - 1)) / (k * z * 8);
+  //   series_sum += a_k_z_k;
+  //   if(fabs(a_k_z_k) < 1e-8) {
+  //     break;
+  //   }
+  // }
+  // return base + log(series_sum);
 }
 
 template <typename T_v>
-inline T_v log_integral_gamma_func(const T_v &v, const double &z, const double &t) {
-    return (v - 1.0) * std::log(t) - 0.5 * z * (t + 1.0 / t);
+inline T_v log_integral_gamma_func(const T_v &v, const double &z, const double &t, const double &log_offset = 0) {
+    return (v - 1.0) * std::log(t) - 0.5 * z * (t + 1.0 / t) - log_offset;
+}
+
+template <typename T_v>
+inline T_v log_integral_gamma_func_max_t(const T_v &v_, const double &z) {
+    return (std::sqrt(v_ * v_ - 2.0*v_ + z*z + 1.0) + v_ - 1.0) / z;
 }
 
 template <typename T_v>
@@ -222,9 +246,13 @@ T_v integral_gamma(const T_v &v, const double &z) {
 
   //auto integrand = [&](T_v t) { return std::pow(t, v - 1) * std::exp(-0.5 * z * (t + 1 / t)); };
   using std::cosh;  using std::exp;
+  double value_at_max = std::abs(log_integral_gamma_func(v, z,
+  //The abs is unnecessary, just to work around issues with using complex
+    std::abs(log_integral_gamma_func_max_t(v, z))));
+
   auto f = [&, v, z](double t)
   {
-    T_v log_value = log_integral_gamma_func(v, z, t);
+    T_v log_value = log_integral_gamma_func(v, z, t, value_at_max);
     T_v value = 0.5 * std::exp(log_value);
     if(!std::isfinite(std::abs(value))) {
       std::cout << v << " " << z << " " << t << std::endl;
@@ -232,7 +260,7 @@ T_v integral_gamma(const T_v &v, const double &z) {
     return value;
   };
   boost::math::quadrature::exp_sinh<double> integrator;
-  return std::log(integrator.integrate(f));  
+  return std::log(integrator.integrate(f)) + value_at_max;  
 }
 
 template <>
@@ -260,12 +288,18 @@ const double rothwell_max_v = 50;
 const double rothwell_max_log_z_over_v = 300;
 
 const double gamma_max_z = 800;
-const double gamma_max_log_max = 50;
+const double gamma_max_v = 5;
 const double gamma_low_z = 0.01;
 const double gamma_low_v = 0.001;
 
 const double small_z_factor = 10;
 const double small_z_min_v = 15;
+
+const double asymp_v_slope = 0.8;
+const double asymp_v_intercept = 4.8;
+
+const double asymp_z_slope = 1;
+const double asymp_z_intercept = 0.5;
 
 inline ComputationType choose_computation_type(const double &v,
                                                const double &z) {
@@ -275,22 +309,28 @@ inline ComputationType choose_computation_type(const double &v,
   const double rothwell_log_z_boundary
       = rothwell_max_log_z_over_v / (v_ - 0.5) - log(2);
 
-  const double gamma_maximum_t = (std::sqrt(v_ * v_ - 2*v_ + z*z + 1) + v_ - 1) / z;
+  const double log_z = log(z);
+  const double log_v = log(v_);
 
-  if (v_ >= small_z_min_v && z * small_z_factor < sqrt(v_ + 1)) {
+  if (v_ >= rothwell_max_v &&  
+      (log_v > asymp_v_slope * log_z + asymp_v_intercept)) {
     return ComputationType::Asymp_v;
-  } else if (z < gamma_max_z &&  
-     (v_ > gamma_low_v || z > gamma_low_z) &&
-     log_integral_gamma_func(v_, z, gamma_maximum_t) < gamma_max_log_max) {
+  } else if(z >= gamma_max_z && 
+    (log_v < asymp_z_slope * log_z + asymp_z_intercept)) {
+    return ComputationType::Asymp_z;
+  } else if ((v_ > gamma_low_v || z > gamma_low_z) && 
+      (log_v < asymp_v_slope * log_z + asymp_v_intercept || v < gamma_max_v))  {
+      //  ( (z < gamma_max_z && v < gamma_max_v) ||
+      //    (log(v_) < 0.8 * log(z) + 4.8 && log(v_) > 0.9 * log(z) + 1.5) ||
+      //    (z < gamma_max_z && log_integral_gamma_func(v_, z, log_integral_gamma_func_max_t(v_, z)) < gamma_max_log_max )
+      //  ) ) {
     return ComputationType::IntegralGamma;
   } else if (v_ < rothwell_max_v
              && (v_ <= 0.5 || log(z) < rothwell_log_z_boundary)) {
     return ComputationType::Rothwell;
-  } else if (v_ > z) {
-    return ComputationType::Asymp_v;
   } else {
-    return ComputationType::Asymp_z;
-  }
+    return ComputationType::IntegralGamma;
+  } 
 
   //return ComputationType::IntegralGamma;
 }
