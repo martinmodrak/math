@@ -284,16 +284,13 @@ var integral_gamma(const var &v, const double &z) {
 // referenced from the test code.
 enum class ComputationType { Rothwell, Asymp_v, Asymp_z, IntegralGamma };
 
+
 const double rothwell_max_v = 50;
-const double rothwell_max_log_z_over_v = 300;
 
 const double gamma_max_z = 800;
 const double gamma_max_v = 5;
 const double gamma_low_z = 0.01;
 const double gamma_low_v = 0.001;
-
-const double small_z_factor = 10;
-const double small_z_min_v = 15;
 
 const double asymp_v_slope = 0.8;
 const double asymp_v_intercept = 4.8;
@@ -301,13 +298,17 @@ const double asymp_v_intercept = 4.8;
 const double asymp_z_slope = 1;
 const double asymp_z_intercept = 0.5;
 
+const double rothwell_max_log_z_over_v = 300;
+
+inline double get_rothwell_log_z_boundary(const double& v) {
+  return rothwell_max_log_z_over_v / (std::fabs(v) - 0.5) - std::log(2);
+}
+
 inline ComputationType choose_computation_type(const double &v,
                                                const double &z) {
   using std::fabs;
   using std::pow;
   const double v_ = fabs(v);
-  const double rothwell_log_z_boundary
-      = rothwell_max_log_z_over_v / (v_ - 0.5) - log(2);
 
   const double log_z = log(z);
   const double log_v = log(v_);
@@ -319,14 +320,10 @@ inline ComputationType choose_computation_type(const double &v,
     (log_v < asymp_z_slope * log_z + asymp_z_intercept)) {
     return ComputationType::Asymp_z;
   } else if ((v_ > gamma_low_v || z > gamma_low_z) && 
-      (log_v < asymp_v_slope * log_z + asymp_v_intercept || v < gamma_max_v))  {
-      //  ( (z < gamma_max_z && v < gamma_max_v) ||
-      //    (log(v_) < 0.8 * log(z) + 4.8 && log(v_) > 0.9 * log(z) + 1.5) ||
-      //    (z < gamma_max_z && log_integral_gamma_func(v_, z, log_integral_gamma_func_max_t(v_, z)) < gamma_max_log_max )
-      //  ) ) {
+      (log_v < asymp_v_slope * log_z + asymp_v_intercept || v_ < gamma_max_v))  {
     return ComputationType::IntegralGamma;
   } else if (v_ < rothwell_max_v
-             && (v_ <= 0.5 || log(z) < rothwell_log_z_boundary)) {
+             && (v_ <= 0.5 || log(z) < get_rothwell_log_z_boundary(v_))) {
     return ComputationType::Rothwell;
   } else {
     return ComputationType::IntegralGamma;

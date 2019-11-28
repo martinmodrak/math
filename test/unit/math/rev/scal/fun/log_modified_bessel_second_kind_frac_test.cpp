@@ -14,8 +14,7 @@ bool output_debug_csv = true;
 using stan::math::LOG_2;
 using stan::math::besselk_internal::ComputationType;
 using stan::math::besselk_internal::choose_computation_type;
-using stan::math::besselk_internal::rothwell_max_v;
-using stan::math::besselk_internal::small_z_min_v;
+
 using stan::math::log_diff_exp;
 using stan::math::log_modified_bessel_second_kind_frac;
 using stan::math::log_sum_exp;
@@ -23,7 +22,7 @@ using stan::math::recover_memory;
 using stan::math::var;
 
 // TODO(martinmodrak) add values close to decision boundaries
-std::array<double, 33> v_to_test = {0,
+std::array<double, 25> v_to_test = {0,
                                     3.15e-7,
                                     2.62e-6,
                                     9.2e-5,
@@ -47,20 +46,24 @@ std::array<double, 33> v_to_test = {0,
                                     8656,
                                     15330.75,
                                     37634.2,
-                                    85323,
-                                    rothwell_max_v - 1,
-                                    rothwell_max_v - 1e-8,
-                                    rothwell_max_v,
-                                    rothwell_max_v + 1,
-                                    small_z_min_v - 1,
-                                    small_z_min_v - 1e-8,
-                                    small_z_min_v,
-                                    small_z_min_v + 1};
+                                    85323 };
 
 std::array<double, 19> z_to_test
     = {1.48e-7, 3.6e-6,   7.248e-5, 4.32e-4, 8.7e-3, 0.04523, 0.17532,
        1,       3,        11.32465, 105.6,   1038.4, 4236,    11457.6,
        62384,   105321.6, 158742.3, 196754,  1.98e6};
+
+std::array<double, 3> hard_v_boundaries = {
+  stan::math::besselk_internal::rothwell_max_v,
+  stan::math::besselk_internal::gamma_max_v,
+  stan::math::besselk_internal::gamma_low_v
+};
+
+std::array<double, 2> hard_z_boundaries = {
+  stan::math::besselk_internal::gamma_max_z,
+  stan::math::besselk_internal::gamma_low_z
+};
+
 
 double allowed_recurrence_error = 1e-7;
 
@@ -109,6 +112,108 @@ const char* computation_type_to_string(ComputationType c) {
 
 // Using the recurrence relation (adapted to log)
 // http://functions.wolfram.com/Bessel-TypeFunctions/BesselK/17/01/01/
+void test_single_pair(const double &v, const double &z, std::ostream* debug_output) {
+  AVAR v_var(v);
+  AVAR z_var(z);
+
+  try {
+    AVAR left_hand = log_modified_bessel_second_kind_frac(v_var, z_var);
+    AVAR right_hand;
+
+    AVAR log_K_vm1
+        = log_modified_bessel_second_kind_frac(v_var - 1, z_var);
+    AVAR log_K_vm2
+        = log_modified_bessel_second_kind_frac(v_var - 2, z_var);
+
+    AVAR log_K_vp1
+        = log_modified_bessel_second_kind_frac(v_var + 1, z_var);
+    AVAR log_K_vp2
+        = log_modified_bessel_second_kind_frac(v_var + 2, z_var);
+
+    // Trying to find the most numerically stable way to compute the
+    // recursive formula
+    if (v > 0) {
+      if (v < 1 + 1e-4) {
+        if (z > 1e-3) {
+          right_hand = log_diff_exp(
+              log_K_vp2, LOG_2 + log(v_var + 1) - log(z_var) + log_K_vp1);
+        } else {
+          right_hand = log(z_var) - log(2) - log(v_var)
+                        + log_diff_exp(log_K_vp1, log_K_vm1);
+        }
+      } else {
+        right_hand = log_sum_exp(
+            log_K_vm2, LOG_2 + log(v_var - 1) - log(z_var) + log_K_vm1);
+      }
+    } else {
+      if (v > -1 - 1e-4) {
+        if (z > 1e-3) {
+          right_hand
+              = log_diff_exp(log_K_vm2, LOG_2 + log(-v_var + 1)
+                                            - log(z_var) + log_K_vm1);
+        } else {
+          if (v == 0) {
+            AVAR right_hand_base
+                = log(modified_bessel_second_kind(0, z_var));
+            right_hand = var(new stan::math::precomp_vv_vari(
+                value_of(right_hand_base), v_var.vi_, right_hand_base.vi_,
+                0, 1));
+          } else {
+            right_hand = log(z_var) - log(2) - log(-v_var)
+                          + log_diff_exp(log_K_vm1, log_K_vp1);
+          }
+        }
+      } else {
+        right_hand = log_sum_exp(
+            log_K_vp2, LOG_2 + log(-v_var - 1) - log(z_var) + log_K_vp1);
+      }
+    }
+
+    AVAR ratio = left_hand / right_hand;
+
+    EXPECT_NEAR(ratio.val(), 1.0, allowed_recurrence_error);
+
+    AVEC x = createAVEC(v_var, z_var, left_hand, right_hand);
+    VEC g;
+    ratio.grad(x, g);
+    EXPECT_NEAR(g[0], 0, allowed_recurrence_error);
+    EXPECT_NEAR(g[1], 0, allowed_recurrence_error);
+    if (debug_output != 0) {
+      *debug_output << v << "," << z << ","
+                    << computation_type_to_string(
+                            choose_computation_type(v, z))
+                    << "," << ratio.val() << "," << g[0] << "," << g[1]
+                    << "," << log_K_vm2 << "," << log_K_vm1 << ","
+                    << left_hand << "," << log_K_vp1 << "," << log_K_vp2
+                    << std::endl;
+    }
+    recover_memory();
+  } catch (...) {
+    std::cout << "\nAt v = " << v << ", z = " << z << " method = "
+              << computation_type_to_string(choose_computation_type(v, z))
+              << ":" << std::endl;
+    throw;
+  }
+}
+
+template<typename T, size_t N, size_t M>
+auto concat(const std::array<T, N>& ar1, const std::array<T, M>& ar2)
+{
+    std::array<T, N+M> result;
+    std::copy (ar1.cbegin(), ar1.cend(), result.begin());
+    std::copy (ar2.cbegin(), ar2.cend(), result.begin() + N);
+    return result;
+}
+
+template<typename T, size_t N> 
+auto operator+(const std::array<T,N>& ar, const T& b) {
+    std::array<T, N> result;
+    for(int i = 0; i < N; i++) {
+      result[i] = ar[i] + b;
+    }
+    return result;
+}
+
 
 TEST(AgradRev, log_modified_bessel_second_kind_frac_recurrence) {
   std::ostream* debug_output = 0;
@@ -119,95 +224,78 @@ TEST(AgradRev, log_modified_bessel_second_kind_frac_recurrence) {
                   << std::endl;
   }
 
-  for (auto v_iter = v_to_test.begin(); v_iter != v_to_test.end(); ++v_iter) {
-    for (auto z_iter = z_to_test.begin(); z_iter != z_to_test.end(); ++z_iter) {
-      for (int sign = -1; sign <= 1; sign += 2) {
-        double v = sign * (*v_iter);
-        double z = *z_iter;
-        AVAR v_var(v);
-        AVAR z_var(z);
+  //For v, we test not only points just around the boundaries, but also
+  //+/- 1 from boundaries as the check procedures involve those
+  auto all_v = concat(v_to_test, 
+    concat(hard_v_boundaries, 
+    concat(hard_v_boundaries + 1.0, 
+    concat(hard_v_boundaries + (-1.0),
+    concat(hard_v_boundaries + 1e-8,
+          hard_v_boundaries + (-1e-8))))));
+  auto all_z = concat(z_to_test, 
+    concat(hard_z_boundaries, 
+    concat(hard_z_boundaries + 1e-8,
+          hard_z_boundaries + (-1e-8))));
 
-        try {
-          AVAR left_hand = log_modified_bessel_second_kind_frac(v_var, z_var);
-          AVAR right_hand;
-
-          AVAR log_K_vm1
-              = log_modified_bessel_second_kind_frac(v_var - 1, z_var);
-          AVAR log_K_vm2
-              = log_modified_bessel_second_kind_frac(v_var - 2, z_var);
-
-          AVAR log_K_vp1
-              = log_modified_bessel_second_kind_frac(v_var + 1, z_var);
-          AVAR log_K_vp2
-              = log_modified_bessel_second_kind_frac(v_var + 2, z_var);
-
-          // Trying to find the most numerically stable way to compute the
-          // recursive formula
-          if (v > 0) {
-            if (v < 1 + 1e-4) {
-              if (z > 1e-3) {
-                right_hand = log_diff_exp(
-                    log_K_vp2, LOG_2 + log(v_var + 1) - log(z_var) + log_K_vp1);
-              } else {
-                right_hand = log(z_var) - log(2) - log(v_var)
-                             + log_diff_exp(log_K_vp1, log_K_vm1);
-              }
-            } else {
-              right_hand = log_sum_exp(
-                  log_K_vm2, LOG_2 + log(v_var - 1) - log(z_var) + log_K_vm1);
-            }
-          } else {
-            if (v > -1 - 1e-4) {
-              if (z > 1e-3) {
-                right_hand
-                    = log_diff_exp(log_K_vm2, LOG_2 + log(-v_var + 1)
-                                                  - log(z_var) + log_K_vm1);
-              } else {
-                if (v == 0) {
-                  AVAR right_hand_base
-                      = log(modified_bessel_second_kind(0, z_var));
-                  right_hand = var(new stan::math::precomp_vv_vari(
-                      value_of(right_hand_base), v_var.vi_, right_hand_base.vi_,
-                      0, 1));
-                } else {
-                  right_hand = log(z_var) - log(2) - log(-v_var)
-                               + log_diff_exp(log_K_vm1, log_K_vp1);
-                }
-              }
-            } else {
-              right_hand = log_sum_exp(
-                  log_K_vp2, LOG_2 + log(-v_var - 1) - log(z_var) + log_K_vp1);
-            }
-          }
-
-          AVAR ratio = left_hand / right_hand;
-
-          EXPECT_NEAR(ratio.val(), 1.0, allowed_recurrence_error);
-
-          AVEC x = createAVEC(v_var, z_var, left_hand, right_hand);
-          VEC g;
-          ratio.grad(x, g);
-          EXPECT_NEAR(g[0], 0, allowed_recurrence_error);
-          EXPECT_NEAR(g[1], 0, allowed_recurrence_error);
-          if (debug_output != 0) {
-            *debug_output << v << "," << z << ","
-                          << computation_type_to_string(
-                                 choose_computation_type(v, z))
-                          << "," << ratio.val() << "," << g[0] << "," << g[1]
-                          << "," << log_K_vm2 << "," << log_K_vm1 << ","
-                          << left_hand << "," << log_K_vp1 << "," << log_K_vp2
-                          << std::endl;
-          }
-          recover_memory();
-        } catch (...) {
-          std::cout << "\nAt v = " << v << ", z = " << z << " method = "
-                    << computation_type_to_string(choose_computation_type(v, z))
-                    << ":" << std::endl;
-          throw;
-        }
-      }
-    }
+  for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
+    std::cout << *v_iter << " ";
   }
+  std::cout << std::endl << std::endl;
+  for (auto z_iter = all_z.begin(); z_iter != all_z.end(); ++z_iter) {
+    std::cout << *z_iter << " ";
+  }
+
+  // for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
+  //   for (auto z_iter = all_z.begin(); z_iter != all_z.end(); ++z_iter) {
+  //     if(*z_iter < 0) { //May arise from the boundaries - 1e-8 test value
+  //       continue;
+  //     }
+  //     for (int sign = -1; sign <= 1; sign += 2) {
+  //       double v = sign * (*v_iter);
+  //       double z = *z_iter;
+  //       test_single_pair(v, z, debug_output);
+  //     }
+  //   }
+  // }
+
+  // //Test the linear boundaries
+  // for (auto z_iter = all_z.begin(); z_iter != all_v.end(); ++z_iter) {
+  //     for (int sign = -1; sign <= 1; sign += 2) {
+  //       double z = *z_iter;
+  //       if(z < 0) {
+  //         continue;
+  //       }
+  //       double v1 = exp(stan::math::besselk_internal::asymp_v_slope * log(z)
+  //           + stan::math::besselk_internal::asymp_v_intercept);
+  //       double v2 = exp(stan::math::besselk_internal::asymp_z_slope * log(z)
+  //           + stan::math::besselk_internal::asymp_z_intercept);
+
+  //       test_single_pair(v1 * sign, z, debug_output);
+  //       test_single_pair(v2 * sign, z, debug_output);
+  //       test_single_pair(v1 * sign + 1, z, debug_output);
+  //       test_single_pair(v2 * sign + 1, z, debug_output);
+  //       test_single_pair(v1 * sign - 1, z, debug_output);
+  //       test_single_pair(v2 * sign - 1, z, debug_output);
+  //       test_single_pair(v1 * sign + 1e-8, z, debug_output);
+  //       test_single_pair(v2 * sign + 1e-8, z, debug_output);
+  //       test_single_pair(v1 * sign - 1e-8, z, debug_output);
+  //       test_single_pair(v2 * sign - 1e-8, z, debug_output);
+  //     }
+  // }
+
+  // //The final non-linear boundary
+  // for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
+  //   double v = *v_iter;
+  //   double z = exp(
+  //     stan::math::besselk_internal::get_rothwell_log_z_boundary(v));
+  //   for (int sign = -1; sign <= 1; sign += 2) {
+  //     test_single_pair(v * sign, z, debug_output);
+  //     test_single_pair(v * sign, z + 1e-8, debug_output);
+  //     if(z > 1e-8) {
+  //       test_single_pair(v * sign, z - 1e-8, debug_output);
+  //     }
+  //   }
+  // }
 }
 
 struct fun {
