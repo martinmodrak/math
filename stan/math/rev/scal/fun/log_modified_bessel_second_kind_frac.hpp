@@ -16,6 +16,8 @@
 #include <stan/math/prim/scal/fun/log_diff_exp.hpp>
 #include <stan/math/rev/arr/fun/log_sum_exp.hpp>
 
+#include <stan/math/rev/scal/fun/digamma.hpp>
+
 #include <stan/math/rev/scal/meta/is_var.hpp>
 #include <stan/math/prim/scal/meta/return_type.hpp>
 
@@ -78,14 +80,16 @@ class inner_integral_rothwell {
     using std::exp;
     using std::pow;
 
+    constexpr unsigned int n = 8;
+
     auto v_mhalf = v - 0.5;
     auto neg2v_m1 = -2.0 * v - 1.0;
-    auto beta = 16.0 / (2.0 * v + 1.0);
+    auto beta = static_cast<double>(2 * n) / (2.0 * v + 1.0);
 
     T_Ret value;
     T_Ret uB = pow(u, beta);
     T_Ret first
-        = beta * exp(-uB) * pow(2.0 * z + uB, v_mhalf) * boost::math::pow<7>(u);
+        = beta * exp(-uB) * pow(2.0 * z + uB, v_mhalf) * boost::math::pow<n - 1>(u);
     T_Ret second = exp(-1.0 / u);
     if (non_zero(second)) {
       //    if (abs(second) > 0) {
@@ -195,8 +199,8 @@ T_v asymptotic_large_z(const T_v &v, const double &z) {
   //Choosing max terms to avoid negative values
   const int max_terms = std::min(1000, static_cast<int>(floor(value_of(v) + 0.5)));
 
-  double log_z = log(z);
-  T_v base = 0.5 * (log(pi()) - log(2) - log_z) - z; 
+  const double log_z = log(z);
+  const double base = 0.5 * (log(pi()) - log(2) - log_z) - z; 
 
   std::vector<T_v> log_sum_terms;
   log_sum_terms.reserve(max_terms);
@@ -289,6 +293,53 @@ T logcosh(const T& x) {
   }
 }
 
+template <typename T_v>
+T_v trapezoid_cosh(const T_v &v, const double &z) {
+  const double& approximate_maximum = std::asinh(value_of(v) / z);
+  const int max_steps = 500;
+  const double& h = v > 100 ? (approximate_maximum / (0.5 * max_steps)) : 5e-2;
+  std::vector<T_v> terms;
+  terms.reserve(max_steps);
+  for(int n = 0; n < max_steps; n++) {
+    const double x = n * h;
+    terms.push_back(logcosh(v * x) - z * cosh(x));
+  }
+  return log_sum_exp(terms) + std::log(h);
+}
+
+// template <>
+// var trapezoid_cosh(const var &v, const double &z) {
+//   //The rule is terrible at calculating d/dv
+//   //But where we need this rule, the derivative of the asymptotic formulae for
+//   //Large v / large z are good
+//   double v_ = value_of(v);
+//   double value = trapezoid_cosh(v_, z);
+//   double d_dv;
+//   if(v > z) {
+//     d_dv = stan::math::digamma(v_) - std::log(z) + std::log(2);
+//   } else {
+//     int max_terms = 100;
+//     double a_k_z_k(1);    
+//     double d_a_k_z_k_dv(0);
+//     const double v_squared_4 = v_ * v_ * 4;
+    
+//     d_dv = 0;
+
+//     for (int k = 1; k < max_terms; k++) {
+//       const double next_term = (v_squared_4 - boost::math::pow<2>(2 * k - 1)) / (k * z * 8);
+//       d_a_k_z_k_dv = d_a_k_z_k_dv * next_term + a_k_z_k * 8 * v_ / (k * z);
+//       a_k_z_k *= next_term;
+//       d_dv += d_a_k_z_k_dv;
+//       if(fabs(d_a_k_z_k_dv) < 1e-8) {
+//         break;
+//       }
+//     }
+//   }
+
+//   const double base = 0.5 * (log(pi()) - log(2) - log(z)) - z; 
+//   return var(new precomp_v_vari(value, v.vi_, base * d_dv));
+// }
+
 
 ////////////////////////////////////////////////////////////////
 //                    CHOOSING AMONG FORMULAE                 //
@@ -296,7 +347,7 @@ T logcosh(const T& x) {
 
 // The code to choose computation method is separate, because it is
 // referenced from the test code.
-enum class ComputationType { Rothwell, Asymp_v, Asymp_z, IntegralGamma };
+enum class ComputationType { Rothwell, Asymp_v, Asymp_z, IntegralGamma, TrapezoidCosh };
 
 
 const double gamma_max_z = 200;
@@ -304,15 +355,17 @@ const double gamma_max_v = 3;
 const double gamma_low_z = 0.01;
 const double gamma_low_v = 0.001;
 
-const double asymp_v_slope = 0.8;
-const double asymp_v_intercept = 4.2;
+const double asymp_v_slope = 1;
+const double asymp_v_intercept = 5.5;
 
 const double asymp_z_slope = 1;
-const double asymp_z_intercept = 1;
+const double asymp_z_intercept = -4;
 
 const double rothwell_max_v = 50;
 const double rothwell_max_z = 1000;
 const double rothwell_max_log_z_over_v = 300;
+
+const double trapezoid_min_v = 100;
 
 inline double get_rothwell_log_z_boundary(const double& v) {
   return rothwell_max_log_z_over_v / (std::fabs(v) - 0.5) - std::log(2);
@@ -335,8 +388,9 @@ inline ComputationType choose_computation_type(const double &v,
       (v_ <= 0.5 || log(z) < get_rothwell_log_z_boundary(v_))) {
     return ComputationType::Rothwell;
   } else if (log_v < asymp_v_slope * log_z + asymp_v_intercept &&
-             log_v > asymp_z_slope * log_z + asymp_z_intercept) {
-    return ComputationType::IntegralGamma;
+             log_v > asymp_z_slope * log_z + asymp_z_intercept &&
+             (v_ > trapezoid_min_v || v > z)) {
+    return ComputationType::TrapezoidCosh;
   } else if (v_ > z) {
     return ComputationType::Asymp_v;
   } else {
@@ -394,6 +448,7 @@ T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z) {
   using besselk_internal::check_params;
   using besselk_internal::choose_computation_type;
   using besselk_internal::compute_rothwell;
+  using besselk_internal::trapezoid_cosh;
   using std::fabs;
   using std::pow;
 
@@ -416,6 +471,9 @@ T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z) {
     }
     case ComputationType::IntegralGamma: {
       return integral_gamma(v_, z);
+    }
+    case ComputationType::TrapezoidCosh: {
+      return trapezoid_cosh(v_, z);
     }
     default: {
       stan::math::domain_error("log_modified_bessel_second_kind_frac",
