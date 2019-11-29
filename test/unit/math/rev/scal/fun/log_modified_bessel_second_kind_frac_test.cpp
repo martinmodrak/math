@@ -21,7 +21,6 @@ using stan::math::log_sum_exp;
 using stan::math::recover_memory;
 using stan::math::var;
 
-// TODO(martinmodrak) add values close to decision boundaries
 std::array<double, 25> v_to_test = {0,
                                     3.15e-7,
                                     2.62e-6,
@@ -59,7 +58,8 @@ std::array<double, 3> hard_v_boundaries = {
   stan::math::besselk_internal::gamma_low_v
 };
 
-std::array<double, 2> hard_z_boundaries = {
+std::array<double, 3> hard_z_boundaries = {
+  stan::math::besselk_internal::rothwell_max_z,
   stan::math::besselk_internal::gamma_max_z,
   stan::math::besselk_internal::gamma_low_z
 };
@@ -186,6 +186,7 @@ void test_single_pair(const double &v, const double &z, std::ostream* debug_outp
                     << "," << log_K_vm2 << "," << log_K_vm1 << ","
                     << left_hand << "," << log_K_vp1 << "," << log_K_vp2
                     << std::endl;
+      std::flush(*debug_output);
     }
     recover_memory();
   } catch (...) {
@@ -237,65 +238,75 @@ TEST(AgradRev, log_modified_bessel_second_kind_frac_recurrence) {
     concat(hard_z_boundaries + 1e-8,
           hard_z_boundaries + (-1e-8))));
 
+  double max_v = 0;
   for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
-    std::cout << *v_iter << " ";
+    max_v = std::max(max_v, *v_iter);
   }
-  std::cout << std::endl << std::endl;
-  for (auto z_iter = all_z.begin(); z_iter != all_z.end(); ++z_iter) {
-    std::cout << *z_iter << " ";
+  // for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
+  //   std::cout << *v_iter << " ";
+  // }
+  // std::cout << std::endl << std::endl;
+  // for (auto z_iter = all_z.begin(); z_iter != all_z.end(); ++z_iter) {
+  //   std::cout << *z_iter << " ";
+  // }
+
+  for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
+    for (auto z_iter = all_z.begin(); z_iter != all_z.end(); ++z_iter) {
+      if(*z_iter < 0) { //May arise from the boundaries - 1e-8 test value
+        continue;
+      }
+      for (int sign = -1; sign <= 1; sign += 2) {
+        double v = sign * (*v_iter);
+        double z = *z_iter;
+        test_single_pair(v, z, debug_output);
+      }
+    }
   }
 
-  // for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
-  //   for (auto z_iter = all_z.begin(); z_iter != all_z.end(); ++z_iter) {
-  //     if(*z_iter < 0) { //May arise from the boundaries - 1e-8 test value
-  //       continue;
-  //     }
-  //     for (int sign = -1; sign <= 1; sign += 2) {
-  //       double v = sign * (*v_iter);
-  //       double z = *z_iter;
-  //       test_single_pair(v, z, debug_output);
-  //     }
-  //   }
-  // }
+  //Test the linear boundaries
+  for (auto z_iter = all_z.begin(); z_iter != all_v.end(); ++z_iter) {
+      for (int sign = -1; sign <= 1; sign += 2) {
+        double z = *z_iter;
+        if(z < 0) {
+          continue;
+        }
+        double v1 = exp(stan::math::besselk_internal::asymp_v_slope * log(z)
+            + stan::math::besselk_internal::asymp_v_intercept);
+        double v2 = exp(stan::math::besselk_internal::asymp_z_slope * log(z)
+            + stan::math::besselk_internal::asymp_z_intercept);
 
-  // //Test the linear boundaries
-  // for (auto z_iter = all_z.begin(); z_iter != all_v.end(); ++z_iter) {
-  //     for (int sign = -1; sign <= 1; sign += 2) {
-  //       double z = *z_iter;
-  //       if(z < 0) {
-  //         continue;
-  //       }
-  //       double v1 = exp(stan::math::besselk_internal::asymp_v_slope * log(z)
-  //           + stan::math::besselk_internal::asymp_v_intercept);
-  //       double v2 = exp(stan::math::besselk_internal::asymp_z_slope * log(z)
-  //           + stan::math::besselk_internal::asymp_z_intercept);
+        if(v1 < max_v) {
+          test_single_pair(v1 * sign, z, debug_output);
+          test_single_pair(v1 * sign + 1, z, debug_output);
+          test_single_pair(v1 * sign - 1, z, debug_output);
+          test_single_pair(v1 * sign + 1e-8, z, debug_output);
+          test_single_pair(v1 * sign - 1e-8, z, debug_output);
+        }
 
-  //       test_single_pair(v1 * sign, z, debug_output);
-  //       test_single_pair(v2 * sign, z, debug_output);
-  //       test_single_pair(v1 * sign + 1, z, debug_output);
-  //       test_single_pair(v2 * sign + 1, z, debug_output);
-  //       test_single_pair(v1 * sign - 1, z, debug_output);
-  //       test_single_pair(v2 * sign - 1, z, debug_output);
-  //       test_single_pair(v1 * sign + 1e-8, z, debug_output);
-  //       test_single_pair(v2 * sign + 1e-8, z, debug_output);
-  //       test_single_pair(v1 * sign - 1e-8, z, debug_output);
-  //       test_single_pair(v2 * sign - 1e-8, z, debug_output);
-  //     }
-  // }
 
-  // //The final non-linear boundary
-  // for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
-  //   double v = *v_iter;
-  //   double z = exp(
-  //     stan::math::besselk_internal::get_rothwell_log_z_boundary(v));
-  //   for (int sign = -1; sign <= 1; sign += 2) {
-  //     test_single_pair(v * sign, z, debug_output);
-  //     test_single_pair(v * sign, z + 1e-8, debug_output);
-  //     if(z > 1e-8) {
-  //       test_single_pair(v * sign, z - 1e-8, debug_output);
-  //     }
-  //   }
-  // }
+        if(v2 < max_v) {
+          test_single_pair(v2 * sign, z, debug_output);
+          test_single_pair(v2 * sign + 1, z, debug_output);
+          test_single_pair(v2 * sign - 1, z, debug_output);
+          test_single_pair(v2 * sign + 1e-8, z, debug_output);
+          test_single_pair(v2 * sign - 1e-8, z, debug_output);
+        }
+      }
+  }
+
+  //The final non-linear boundary
+  for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
+    double v = *v_iter;
+    double z = exp(
+      stan::math::besselk_internal::get_rothwell_log_z_boundary(v));
+    for (int sign = -1; sign <= 1; sign += 2) {
+      test_single_pair(v * sign, z, debug_output);
+      test_single_pair(v * sign, z + 1e-8, debug_output);
+      if(z > 1e-8) {
+        test_single_pair(v * sign, z - 1e-8, debug_output);
+      }
+    }
+  }
 }
 
 struct fun {
@@ -521,7 +532,7 @@ double allowed_rel_error = 1e-8;
 }
 
 #define EXPECT_REL_ERROR(a, b) EXPECT_TRUE(check_relative_error(a, b))
-/*
+
 TEST(AgradRev, log_modified_bessel_second_kind_frac_double_double) {
   std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
     double f1 = log_modified_bessel_second_kind_frac(test.v, test.z);
@@ -591,4 +602,4 @@ TEST(AgradRev, log_modified_bessel_second_kind_frac_var_var) {
       throw;
     }
   });
-}*/
+}
