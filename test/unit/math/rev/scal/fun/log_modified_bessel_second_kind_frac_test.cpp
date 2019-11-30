@@ -182,7 +182,8 @@ void test_single_pair(const double &v, const double &z, std::ostream* debug_outp
     EXPECT_NEAR(g[0], 0, allowed_recurrence_error);
     EXPECT_NEAR(g[1], 0, allowed_recurrence_error);
     if (debug_output != 0) {
-      *debug_output << v << "," << z << ","
+      *debug_output << std::setprecision(18) << std::fixed
+                    << v << "," << z << ","
                     << computation_type_to_string(
                             choose_computation_type(v, z))
                     << "," << ratio.val() << "," << g[0] << "," << g[1]

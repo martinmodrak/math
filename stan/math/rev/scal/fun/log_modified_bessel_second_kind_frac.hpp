@@ -14,6 +14,7 @@
 #include <stan/math/rev/scal/fun/exp.hpp>
 #include <stan/math/prim/scal/fun/exp.hpp>
 #include <stan/math/prim/scal/fun/log_diff_exp.hpp>
+#include <stan/math/prim/scal/fun/log1p_exp.hpp>
 #include <stan/math/rev/arr/fun/log_sum_exp.hpp>
 
 #include <stan/math/rev/scal/fun/digamma.hpp>
@@ -26,6 +27,9 @@
 #include <boost/math/quadrature/tanh_sinh.hpp>
 #include <boost/math/quadrature/exp_sinh.hpp>
 #include <boost/math/tools/numerical_differentiation.hpp>
+#include <boost/math/tools/roots.hpp>
+#include <tuple> // for std::tuple and std::make_tuple.
+
 #include <limits>
 #include <algorithm>
 
@@ -281,31 +285,30 @@ var integral_gamma(const var &v, const double &z) {
 }
 
 //Using trapezoidal rule from https://arxiv.org/pdf/1209.1547.pdf
+
 template <typename T>
 T logcosh(const T& x) {
-  T x_ = abs(x);
-  if(x_ < 1e-4) {
-    return 0.5 * x * x;
-  } else if(x_ < 17) {
-    return log(cosh(x));
-  } else {
-    return x_ - std::log(2);
-  }
+  //By bgoodri
+  return x + log1p_exp(-2 * x) - log(2);
 }
 
 template <typename T_v>
 T_v trapezoid_cosh(const T_v &v, const double &z) {
   const double& approximate_maximum = std::asinh(value_of(v) / z);
-  const int max_steps = 500;
-  const double& h = v > 100 ? (approximate_maximum / (0.5 * max_steps)) : 5e-2;
+  const int max_steps = 5000;
+  //const double& h = v > 100 ? (approximate_maximum / (0.5 * max_steps)) : 5e-2;
+  const double& h = approximate_maximum / (0.1 * max_steps);
   std::vector<T_v> terms;
   terms.reserve(max_steps);
   for(int n = 0; n < max_steps; n++) {
     const double x = n * h;
-    terms.push_back(logcosh(v * x) - z * cosh(x));
+    const T_v last_term = logcosh(v * x) - z * cosh(x);
+    terms.push_back(last_term);
+    //TODO create some sensible stopping criterion
   }
   return log_sum_exp(terms) + std::log(h);
 }
+
 
 // template <>
 // var trapezoid_cosh(const var &v, const double &z) {
@@ -339,6 +342,81 @@ T_v trapezoid_cosh(const T_v &v, const double &z) {
 //   const double base = 0.5 * (log(pi()) - log(2) - log(z)) - z; 
 //   return var(new precomp_v_vari(value, v.vi_, base * d_dv));
 // }
+
+// template <typename T_v>
+// T_v trapezoid_cosh(const T_v &nu, const double &x) {
+//   using std::exp;
+//   using std::log;
+//   using std::log1p;
+//   using std::cosh;
+//   using std::sinh;
+//   using std::tanh;
+//   using std::sqrt;
+  
+//   double ub = 1.0;
+  
+//   double nu_real = std::abs(nu);
+//   while ( -x * sinh(ub) +nu_real * tanh(ub * nu_real) > 0 ) {
+//     ub *= 2.0;
+//   }
+//   double guess = 0.75 * ub;
+  
+//   boost::uintmax_t maxit = 20;
+//   using boost::math::tools::newton_raphson_iterate;
+  
+//   auto arg_max = newton_raphson_iterate(
+//     [&](double t){
+//       auto sinh_t = sinh(t);
+//       auto v_t = nu_real * t;
+//       auto tanh_vt = tanh(v_t);
+//       auto cosh_vt = cosh(v_t);
+//       auto x_sinh_t = x * sinh_t;
+//       auto value = nu_real * tanh_vt - x_sinh_t;
+//       auto ratio = nu_real / cosh_vt;
+//       auto ratio2 = ratio * ratio;
+//       auto D1 = ratio2 - x * cosh(t);
+//       return std::make_tuple(value, D1);
+//     }, guess, ub > 1.0 ? 0.5 * ub : 0, ub, 8, maxit);
+  
+//   const double log2 = log(2.0);
+//   // log(cosh(x)) == x + log1p(exp(-2 * x)) - log(2)
+//   auto pivot = logcosh(nu * arg_max)
+//              - x * cosh(arg_max);
+  
+//   double error_estimate;
+//   double L1;
+
+//   boost::math::quadrature::exp_sinh<double> integrator;
+//   double termination = sqrt(std::numeric_limits<double>::epsilon());
+  
+//   auto log_K = pivot + log(integrator.integrate(
+//     [&](double t) {
+//       auto nut = nu * t;
+//       return exp(-pivot + logcosh(nut)
+//                  - x * cosh(t));
+//     }, termination, &error_estimate, &L1));
+
+//   // std::cout << "error_estimate = " << error_estimate << std::endl 
+//   //           << "L1 = " << L1 << std::endl
+//   //           << "arg_max = " << arg_max << std::endl
+//   //           << "pivot = " << pivot << std::endl;
+//   return log_K;
+// }
+
+// template <>
+// var trapezoid_cosh(const var &v, const double &z) {
+//   double value = trapezoid_cosh(value_of(v), z);
+//   typedef std::complex<double> Complex;
+//   auto complex_func
+//       = [z](const Complex &complex_v) { return trapezoid_cosh(complex_v, z); };
+
+//   double d_dv = boost::math::tools::complex_step_derivative(
+//       complex_func, stan::math::value_of(v));
+
+//   return var(new precomp_v_vari(value, v.vi_, d_dv)); 
+// }
+
+
 
 
 ////////////////////////////////////////////////////////////////
