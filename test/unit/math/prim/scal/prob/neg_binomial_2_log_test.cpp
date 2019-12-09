@@ -199,3 +199,34 @@ TEST(ProbNegBinomial2, log_matches_lpmf) {
       (stan::math::neg_binomial_2_lpmf<double, double, double>(y, mu, phi)),
       (stan::math::neg_binomial_2_log<double, double, double>(y, mu, phi)));
 }
+
+TEST(ProbDistributionsNegBinomial2Log, 
+  neg_binomial_2_log_grid_test) {
+  std::array<double, 5> mu_log_to_test = {-3, -1, 0, 4, 10 };
+  std::array<double, 6> phi_to_test = {2e-5,0.36,1, 2.3e5, 1.8e10, 6e16  };
+  std::array<unsigned int, 7> y_to_test = {0, 1, 10, 39, 101, 3048, 150054 };
+
+  for(auto mu_log_iter = mu_log_to_test.begin(); 
+    mu_log_iter != mu_log_to_test.end(); ++mu_log_iter) {
+    for(auto phi_iter = phi_to_test.begin(); 
+      phi_iter != phi_to_test.end(); ++phi_iter) {
+      for(auto y_iter = y_to_test.begin(); 
+        y_iter != y_to_test.end(); ++y_iter) {
+          unsigned int y = *y_iter;
+          double mu_log = *mu_log_iter;
+          double phi = *phi_iter;
+          double val_log = stan::math::neg_binomial_2_log_lpmf(y, mu_log, phi);
+          EXPECT_LE(val_log, 0) << "neg_binomial_2_log_lpmf yields " << 
+            val_log << " which si greater than 0 for y = " << y << 
+            ", mu_log = " << mu_log << ", phi = " << phi << ".";
+          double val_orig = 
+            stan::math::neg_binomial_2_lpmf(y, std::exp(mu_log), phi);
+          EXPECT_NEAR(val_log, val_orig, 1e-8) <<
+            "neg_binomial_2_log_lpmf yields different result (" << val_log << 
+            ") than neg_binomial_2_lpmf (" << val_orig << ") for y = " << y << 
+            ", mu_log = " << mu_log << ", phi = " << phi << ".";
+      }
+    }
+  }
+  
+}
