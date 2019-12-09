@@ -120,10 +120,10 @@ class inner_integral_rothwell {
     boost::math::quadrature::tanh_sinh<value_type> integrator;
     T_Ret value = integrator.integrate(*this, 0.0, 1.0, tolerance, &error, &L1,
                                        &levels);
-    if (error > 1e-6 * L1) {
+    if (error > 1e-8 * L1) {
       domain_error("inner_integral_rothwell",
                    "error estimate of integral / L1 ", error / L1, "",
-                   "is larger than 1e-6");
+                   "is larger than 1e-8");
     }
 
     return value;

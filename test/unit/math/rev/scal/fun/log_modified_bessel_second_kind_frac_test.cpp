@@ -21,9 +21,10 @@ using stan::math::log_sum_exp;
 using stan::math::recover_memory;
 using stan::math::var;
 
-std::array<double, 25> v_to_test = {0,
+std::array<double, 26> v_to_test = {0,
                                     3.15e-7,
                                     2.62e-6,
+                                    1.3e-5,
                                     9.2e-5,
                                     0.0026,
                                     0.0843,
@@ -142,7 +143,7 @@ void test_single_pair(const double &v, const double &z, std::ostream* debug_outp
               log_K_vp2, LOG_2 + log(v_var + 1) - log(z_var) + log_K_vp1);
         } else {
           right_hand = log(z_var) - log(2) - log(v_var)
-                        + log_diff_exp(log_K_vp1, log_K_vm1);
+                         + log_diff_exp(log_K_vp1, log_K_vm1);
         }
       } else {
         right_hand = log_sum_exp(
@@ -176,19 +177,30 @@ void test_single_pair(const double &v, const double &z, std::ostream* debug_outp
 
     EXPECT_NEAR(ratio.val(), 1.0, allowed_recurrence_error);
 
-    AVEC x = createAVEC(v_var, z_var, left_hand, right_hand);
+    AVEC x = createAVEC(v_var, z_var, left_hand, right_hand, log_K_vm2, log_K_vm1,log_K_vp1, log_K_vp1);
     VEC g;
     ratio.grad(x, g);
-    EXPECT_NEAR(g[0], 0, allowed_recurrence_error);
-    EXPECT_NEAR(g[1], 0, allowed_recurrence_error);
+    double d_dv = g[0];
+    double d_dz = g[1];
+    EXPECT_NEAR(d_dv, 0, allowed_recurrence_error);
+    EXPECT_NEAR(d_dz, 0, allowed_recurrence_error);
     if (debug_output != 0) {
+      double d_left_hand = g[2];
+      double d_right_hand = g[3];
+      double d_value_m2 = g[4];
+      double d_value_m1 = g[5];
+      double d_value_p1 = g[6];
+      double d_value_p2 = g[7];
       *debug_output << std::setprecision(18) << std::fixed
                     << v << "," << z << ","
                     << computation_type_to_string(
                             choose_computation_type(v, z))
-                    << "," << ratio.val() << "," << g[0] << "," << g[1]
+                    << "," << ratio.val() << "," << d_dv << "," << d_dz
                     << "," << log_K_vm2 << "," << log_K_vm1 << ","
-                    << left_hand << "," << log_K_vp1 << "," << log_K_vp2
+                    << left_hand << "," << log_K_vp1 << "," << log_K_vp2 << ","
+                    << d_left_hand  << "," << d_right_hand << "," 
+                    << d_value_m2 << "," << d_value_m1 << "," 
+                    << d_value_p1 << "," << d_value_p2
                     << std::endl;
       std::flush(*debug_output);
     }
@@ -225,7 +237,8 @@ TEST(AgradRev, log_modified_bessel_second_kind_frac_recurrence) {
   if (output_debug_csv) {
     debug_output = new std::ofstream("log_besselk_test.csv");
     *debug_output << "v,z,method,ratio,grad_z,grad_v,value_m2,value_m1,"
-                     "value,value_p1,value_p2"
+                     "value,value_p1,value_p2, d_left_hand, d_right_hand,"
+                     "d_value_m2,d_value_m1,d_value_p1,d_value_p2"
                   << std::endl;
   }
 
@@ -555,73 +568,73 @@ double allowed_rel_error = 1e-8;
 
 #define EXPECT_REL_ERROR(a, b) EXPECT_TRUE(check_relative_error(a, b))
 
-// TEST(AgradRev, log_modified_bessel_second_kind_frac_double_double) {
-//   std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
-//     double f1 = log_modified_bessel_second_kind_frac(test.v, test.z);
-//     EXPECT_REL_ERROR(test.value, f1)
-//         << "ratio at v = " << test.v << ", z = " << test.z;
-//   });
-// }
+TEST(AgradRev, log_modified_bessel_second_kind_frac_double_double) {
+  std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
+    double f1 = log_modified_bessel_second_kind_frac(test.v, test.z);
+    EXPECT_REL_ERROR(test.value, f1)
+        << "ratio at v = " << test.v << ", z = " << test.z;
+  });
+}
 
-// TEST(AgradRev, log_modified_bessel_second_kind_frac_double_var) {
-//   std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
-//     AVAR z(test.z);
-//     try {
-//       AVAR f = log_modified_bessel_second_kind_frac(test.v, z);
-//       EXPECT_REL_ERROR(test.value, f.val())
-//           << "ratio at v = " << test.v << ", z = " << test.z;
+TEST(AgradRev, log_modified_bessel_second_kind_frac_double_var) {
+  std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
+    AVAR z(test.z);
+    try {
+      AVAR f = log_modified_bessel_second_kind_frac(test.v, z);
+      EXPECT_REL_ERROR(test.value, f.val())
+          << "ratio at v = " << test.v << ", z = " << test.z;
 
-//       AVEC x = createAVEC(z);
-//       VEC g;
-//       f.grad(x, g);
-//       EXPECT_REL_ERROR(test.grad_z, g[0])
-//           << "grad_z at v = " << test.v << ", z = " << test.z;
-//     } catch (const std::domain_error& err) {
-//       std::cout << "\nAt v = " << test.v << ", z = " << test.z << ":\n";
-//       throw;
-//     }
-//   });
-// }
+      AVEC x = createAVEC(z);
+      VEC g;
+      f.grad(x, g);
+      EXPECT_REL_ERROR(test.grad_z, g[0])
+          << "grad_z at v = " << test.v << ", z = " << test.z;
+    } catch (const std::domain_error& err) {
+      std::cout << "\nAt v = " << test.v << ", z = " << test.z << ":\n";
+      throw;
+    }
+  });
+}
 
-// TEST(AgradRev, log_modified_bessel_second_kind_frac_var_double) {
-//   std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
-//     try {
-//       AVAR v(test.v);
-//       AVAR f = log_modified_bessel_second_kind_frac(v, test.z);
-//       EXPECT_REL_ERROR(test.value, f.val())
-//           << "ratio at v = " << test.v << ", z = " << test.z;
+TEST(AgradRev, log_modified_bessel_second_kind_frac_var_double) {
+  std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
+    try {
+      AVAR v(test.v);
+      AVAR f = log_modified_bessel_second_kind_frac(v, test.z);
+      EXPECT_REL_ERROR(test.value, f.val())
+          << "ratio at v = " << test.v << ", z = " << test.z;
 
-//       AVEC x = createAVEC(v);
-//       VEC g;
-//       f.grad(x, g);
-//       EXPECT_REL_ERROR(test.grad_v, g[0])
-//           << "grad_v at v = " << test.v << ", z = " << test.z;
-//     } catch (const std::domain_error& err) {
-//       std::cout << "\nAt v = " << test.v << ", z = " << test.z << ":\n";
-//       throw;
-//     }
-//   });
-// }
+      AVEC x = createAVEC(v);
+      VEC g;
+      f.grad(x, g);
+      EXPECT_REL_ERROR(test.grad_v, g[0])
+          << "grad_v at v = " << test.v << ", z = " << test.z;
+    } catch (const std::domain_error& err) {
+      std::cout << "\nAt v = " << test.v << ", z = " << test.z << ":\n";
+      throw;
+    }
+  });
+}
 
-// TEST(AgradRev, log_modified_bessel_second_kind_frac_var_var) {
-//   std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
-//     try {
-//       AVAR v(test.v);
-//       AVAR z(test.z);
-//       AVAR f = log_modified_bessel_second_kind_frac(v, z);
-//       EXPECT_REL_ERROR(test.value, f.val())
-//           << "ratio at v = " << test.v << ", z = " << test.z;
+TEST(AgradRev, log_modified_bessel_second_kind_frac_var_var) {
+  std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
+    try {
+      AVAR v(test.v);
+      AVAR z(test.z);
+      AVAR f = log_modified_bessel_second_kind_frac(v, z);
+      EXPECT_REL_ERROR(test.value, f.val())
+          << "ratio at v = " << test.v << ", z = " << test.z;
 
-//       AVEC x = createAVEC(v, z);
-//       VEC g;
-//       f.grad(x, g);
-//       EXPECT_REL_ERROR(test.grad_v, g[0])
-//           << "grad_v at v = " << test.v << ", z = " << test.z;
-//       EXPECT_REL_ERROR(test.grad_z, g[1])
-//           << "grad_z at v = " << test.v << ", z = " << test.z;
-//     } catch (const std::domain_error& err) {
-//       std::cout << "\nAt v = " << test.v << ", z = " << test.z << ":\n";
-//       throw;
-//     }
-//   });
-// }
+      AVEC x = createAVEC(v, z);
+      VEC g;
+      f.grad(x, g);
+      EXPECT_REL_ERROR(test.grad_v, g[0])
+          << "grad_v at v = " << test.v << ", z = " << test.z;
+      EXPECT_REL_ERROR(test.grad_z, g[1])
+          << "grad_z at v = " << test.v << ", z = " << test.z;
+    } catch (const std::domain_error& err) {
+      std::cout << "\nAt v = " << test.v << ", z = " << test.z << ":\n";
+      throw;
+    }
+  });
+}
