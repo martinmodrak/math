@@ -30,11 +30,11 @@ class NegativeBinomial2TestRig : public VectorIntRNGTestRig {
   }
 };
 
-TEST(ProbDistributionsNegativeBinomial2, errorCheck) {
+TEST(ProbDistributionsNegBinomial2, errorCheck) {
   check_dist_throws_all_types(NegativeBinomial2TestRig());
 }
 
-TEST(ProbDistributionsNegativeBinomial2, distributionCheck) {
+TEST(ProbDistributionsNegBinomial2, distributionCheck) {
   check_counts_real_real(NegativeBinomial2TestRig());
 }
 
@@ -201,7 +201,7 @@ TEST(ProbDistributionsNegBinomial2, chiSquareGoodnessFitTest3) {
   EXPECT_TRUE(chi < quantile(complement(mydist, 1e-6)));
 }
 
-TEST(ProbDistributionsNegBinomial, chiSquareGoodnessFitTest4) {
+TEST(ProbDistributionsNegBinomial2, chiSquareGoodnessFitTest4) {
   boost::random::mt19937 rng;
   int N = 1000;
   int K = stan::math::round(2 * std::pow(N, 0.4));
@@ -238,15 +238,60 @@ TEST(ProbDistributionsNegBinomial, chiSquareGoodnessFitTest4) {
   EXPECT_TRUE(chi < quantile(complement(mydist, 1e-6)));
 }
 
-TEST(ProbDistributionsNegBinomial, extreme_values) {
-  int N = 100;
-  double mu = 8;
-  double phi = 1e12;
-  for (int n = 0; n < 10; ++n) {
-    phi *= 10;
-    double logp = stan::math::neg_binomial_2_log<false>(N, mu, phi);
-    EXPECT_LT(logp, 0);
+TEST(ProbDistributionsNegBinomial2, extreme_values) {
+  std::vector<int> n_to_test = {1, 5, 100, 12985, 1968422};
+  std::vector<double> mu_to_test = {1e-5, 0.1, 8, 713, 28311, 19850054};
+  double phi_cutoff = stan::math::internal::neg_binomial_2_phi_cutoff;
+  for (double mu : mu_to_test) {
+    for (int n : n_to_test) {
+      // Test just before cutoff
+      double logp
+          = stan::math::neg_binomial_2_log<false>(n, mu, phi_cutoff - 1e-8);
+      EXPECT_LT(logp, 0) << "n = " << n << ", mu = " << mu
+                         << ", phi = " << (phi_cutoff - 1e-8);
+
+      // Test across a range of phi
+      for (double phi = 1e12; phi < 1e22; phi *= 10) {
+        double logp = stan::math::neg_binomial_2_log<false>(n, mu, phi);
+        EXPECT_LT(logp, 0) << "n = " << n << ", mu = " << mu
+                           << ", phi = " << phi;
+      }
+    }
   }
+}
+
+TEST(ProbDistributionsNegBinomial2, poissonCutoff) {
+  double phi_cutoff = stan::math::internal::neg_binomial_2_phi_cutoff;
+  std::vector<double> mu_to_test
+      = {2.345e-5, 0.2, 13, 150, 1621, 18432, 73582345};
+  std::vector<int> n_to_test = {0, 3, 16, 24, 181, 2132, 121358, 865422242};
+  for (double mu : mu_to_test) {
+    for (int n : n_to_test) {
+      double before_cutoff
+          = stan::math::neg_binomial_2_lpmf(n, mu, phi_cutoff - 1e-8);
+      double after_cutoff
+          = stan::math::neg_binomial_2_lpmf(n, mu, phi_cutoff + 1e-8);
+      double relative_error_at_cutoff = log(before_cutoff / after_cutoff);
+      EXPECT_NEAR(relative_error_at_cutoff, 0, 1e-8)
+          << "neg_binomial_2_lpmf changes too much around phi cutoff for n = "
+          << n << ", mu = " << mu << ", cutoff = " << phi_cutoff
+          << " value at cutoff - 1e-8: " << before_cutoff
+          << ", value at cutoff + 1e-8: " << after_cutoff;
+    }
+  }
+}
+
+TEST(ProbDistributionsNegBinomial2, vectorAroundCutoff) {
+  int y = 10;
+  double mu = 9.36;
+  std::vector<double> phi;
+  phi.push_back(1);
+  phi.push_back(stan::math::internal::neg_binomial_2_phi_cutoff + 1);
+  double vector_value = stan::math::neg_binomial_2_lpmf(y, mu, phi);
+  double scalar_value = stan::math::neg_binomial_2_lpmf(y, mu, phi[0])
+                        + stan::math::neg_binomial_2_lpmf(y, mu, phi[1]);
+
+  EXPECT_FLOAT_EQ(vector_value, scalar_value);
 }
 
 TEST(ProbDistributionsNegativeBinomial2Log, distributionCheck) {
