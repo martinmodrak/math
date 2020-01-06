@@ -99,92 +99,94 @@ TEST(ProbDistributionsNegBinomial2Log, derivativesPrecomputed) {
   }
 }
 
-// TEST(ProbDistributionsNegBinomial2, derivativesComplexStep) {
-//   using boost::math::differentiation::complex_step_derivative;
-//   using stan::math::is_nan;
-//   using stan::math::neg_binomial_2_log_lpmf;
-//   using stan::math::var;
+TEST(ProbDistributionsNegBinomial2, derivativesComplexStep) {
+  using boost::math::differentiation::complex_step_derivative;
+  using stan::math::is_nan;
+  using stan::math::neg_binomial_2_log_lpmf;
+  using stan::math::var;
+  using stan::math::log_sum_exp;
 
-//   std::vector<int> n_to_test = {0, 7, 100, 835, 14238, 385000, 1000000};
-//   std::vector<double> eta_to_test = {0.8, 8, 24, 271, 2586, 33294};
+  std::vector<int> n_to_test = {0, 7, 100, 835, 14238, 385000, 1000000};
+  std::vector<double> eta_to_test = 
+    {-1531,-831, -124.5, -13, -2, 0, 0.536844, 1.26845, 11, 850, 2423};
 
-//   auto nb2_log_for_test = [](int n, const std::complex<double>& mu,
-//                              const std::complex<double>& phi) {
-//     // Using first-order Taylor expansion of lgamma(a + b*i) around b = 0
-//     // Which happens to work nice in this case, as b is always 0 or the very
-//     // small complex step
-//     auto lgamma_c_approx = [](const std::complex<double>& x) {
-//       return std::complex<double>(lgamma(x.real()),
-//                                   x.imag() * boost::math::digamma(x.real()));
-//     };
+  auto nb2_log_for_test = [](int n, const std::complex<double>& eta,
+                             const std::complex<double>& phi) {
+    // Using first-order Taylor expansion of lgamma(a + b*i) around b = 0
+    // Which happens to work nice in this case, as b is always 0 or the very
+    // small complex step
+    auto lgamma_c_approx = [](const std::complex<double>& x) {
+      return std::complex<double>(lgamma(x.real()),
+                                  x.imag() * boost::math::digamma(x.real()));
+    };
 
-//     const double n_(n);
-//     return lgamma_c_approx(n_ + phi) - lgamma(n + 1) - lgamma_c_approx(phi)
-//            + phi * (log(phi) - log(mu + phi)) - n_ * log(mu + phi)
-//            + n_ * log(mu);
-//   };
+    const double n_(n);
+    return lgamma_c_approx(n_ + phi) - lgamma(n + 1) - lgamma_c_approx(phi)
+           + phi * (log(phi) - log_sum_exp(eta, log(phi))) 
+           - n_ * log_sum_exp(eta, log(phi)) + n_ * eta;
+  };
 
-//   double phi_cutoff = stan::math::internal::neg_binomial_2_phi_cutoff;
-//   for (double mu_dbl : mu_to_test) {
-//     for (int n : n_to_test) {
-//       for (double phi_dbl = 1.5; phi_dbl < 1e22; phi_dbl *= 10) {
-//         var mu(mu_dbl);
-//         var phi(phi_dbl);
-//         var val = neg_binomial_2_lpmf(n, mu, phi);
+  double phi_cutoff = stan::math::internal::neg_binomial_2_phi_cutoff;
+  for (double eta_dbl : eta_to_test) {
+    for (int n : n_to_test) {
+      for (double phi_dbl = 1.5; phi_dbl < 1e22; phi_dbl *= 10) {
+        var eta(eta_dbl);
+        var phi(phi_dbl);
+        var val = neg_binomial_2_log_lpmf(n, eta, phi);
 
-//         std::vector<var> x;
-//         x.push_back(mu);
-//         x.push_back(phi);
+        std::vector<var> x;
+        x.push_back(eta);
+        x.push_back(phi);
 
-//         std::vector<double> gradients;
-//         val.grad(x, gradients);
+        std::vector<double> gradients;
+        val.grad(x, gradients);
 
-//         EXPECT_TRUE(value_of(val) < 0)
-//             << "for n = " << n << ", mu = " << mu_dbl << ", phi = " << phi_dbl;
+        EXPECT_TRUE(value_of(val) < 0)
+            << "for n = " << n << ", eta = " << eta_dbl << ", phi = " << phi_dbl;
 
-//         for (int i = 0; i < 2; ++i) {
-//           EXPECT_FALSE(is_nan(gradients[i]));
-//         }
+        for (int i = 0; i < 2; ++i) {
+          EXPECT_FALSE(is_nan(gradients[i]));
+        }
 
-//         auto nb2_log_mu
-//             = [n, phi_dbl, nb2_log_for_test](const std::complex<double>& mu) {
-//                 return nb2_log_for_test(n, mu, phi_dbl);
-//               };
-//         auto nb2_log_phi
-//             = [n, mu_dbl, nb2_log_for_test](const std::complex<double>& phi) {
-//                 return nb2_log_for_test(n, mu_dbl, phi);
-//               };
-//         double complex_step_dmu = complex_step_derivative(nb2_log_mu, mu_dbl);
-//         double complex_step_dphi
-//             = complex_step_derivative(nb2_log_phi, phi_dbl);
+        auto nb2_log_eta
+            = [n, phi_dbl, nb2_log_for_test](const std::complex<double>& eta) {
+                return nb2_log_for_test(n, eta, phi_dbl);
+              };
+        auto nb2_log_phi
+            = [n, eta_dbl, nb2_log_for_test](const std::complex<double>& phi) {
+                return nb2_log_for_test(n, eta_dbl, phi);
+              };
+        double complex_step_dmu = complex_step_derivative(nb2_log_eta, eta_dbl);
+        double complex_step_dphi
+            = complex_step_derivative(nb2_log_phi, phi_dbl);
 
-//         std::ostringstream message;
-//         message << ", n = " << n << ", mu = " << mu_dbl
-//                 << ", phi = " << phi_dbl;
+        std::ostringstream message;
+        message << ", n = " << n << ", eta = " << eta_dbl
+                << ", phi = " << phi_dbl;
 
-//         double tolerance_phi;
-//         double tolerance_mu;
-//         if (phi < phi_cutoff || n < 100000) {
-//           tolerance_phi = std::max(1e-10, fabs(gradients[1]) * 1e-8);
-//         } else {
-//           tolerance_phi = std::max(1e-8, fabs(gradients[1]) * 1e-5);
-//         }
+        double tolerance_phi;
+        double tolerance_mu;
+        if (phi < phi_cutoff || n < 100000) {
+          tolerance_phi = std::max(1e-10, fabs(gradients[1]) * 1e-8);
+        } else {
+          tolerance_phi = std::max(1e-8, fabs(gradients[1]) * 1e-5);
+        }
 
-//         if (phi < phi_cutoff) {
-//           tolerance_mu = std::max(1e-10, fabs(gradients[0]) * 1e-8);
-//         } else {
-//           tolerance_mu = std::max(1e-8, fabs(gradients[0]) * 1e-5);
-//         }
+        if (phi < phi_cutoff) {
+          tolerance_mu = std::max(1e-10, fabs(gradients[0]) * 1e-8);
+        } else {
+          tolerance_mu = std::max(1e-8, fabs(gradients[0]) * 1e-5);
+        }
 
-//         EXPECT_NEAR(gradients[0], complex_step_dmu, tolerance_mu)
-//             << "grad_mu" << message.str();
+        EXPECT_NEAR(gradients[0], complex_step_dmu, tolerance_mu)
+            << "grad_mu" << message.str();
 
-//         EXPECT_NEAR(gradients[1], complex_step_dphi, tolerance_phi)
-//             << "grad_phi" << message.str();
-//       }
-//     }
-//   }
-// }
+        EXPECT_NEAR(gradients[1], complex_step_dphi, tolerance_phi)
+            << "grad_phi" << message.str();
+      }
+    }
+  }
+}
 
 // TEST(ProbDistributionsNegBinomial2, derivativesAtCutoff) {
 //   double phi_cutoff = stan::math::internal::neg_binomial_2_phi_cutoff;

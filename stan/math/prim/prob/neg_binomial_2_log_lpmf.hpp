@@ -9,16 +9,11 @@
 #include <stan/math/prim/scal/fun/lgamma.hpp>
 #include <stan/math/prim/scal/fun/log_sum_exp.hpp>
 #include <stan/math/prim/scal/fun/value_of.hpp>
+#include <stan/math/prim/prob/neg_binomial_2_lpmf.hpp>
 #include <cmath>
 
 namespace stan {
 namespace math {
-
-namespace internal {
-  //TODO[martinmodrak] merge with neg_binomial_2_phi_cutoff once #1497 is 
-  //processed
-  constexpr double neg_binomial_2_log_phi_cutoff = 1e10;
-}
 
 // NegBinomial(n|eta, phi)  [phi > 0;  n >= 0]
 template <bool propto, typename T_n, typename T_log_location,
@@ -90,7 +85,7 @@ return_type_t<T_log_location, T_precision> neg_binomial_2_log_lpmf(
   }
 
   for (size_t i = 0; i < max_size_seq_view; i++) {
-   if (phi_val[i] > internal::neg_binomial_2_log_phi_cutoff) {
+   if (phi_val[i] > internal::neg_binomial_2_phi_cutoff) {
       // Phi is large, delegate to Poisson.
       // Copying the code here as just calling
       // poisson_lpmf does not preserve propto logic correctly.
