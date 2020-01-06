@@ -1,4 +1,4 @@
-#include <stan/math/fwd/scal.hpp>
+#include <stan/math/fwd.hpp>
 #include <gtest/gtest.h>
 
 template <typename... Ts>
@@ -8,7 +8,7 @@ void expect_not_const() {
   EXPECT_FALSE(temp);
 }
 
-TEST(MetaTraitsFwdScal, isConstant) {
+TEST(MathMetaFwd, isConstant) {
   using stan::math::fvar;
 
   expect_not_const<fvar<double> >();

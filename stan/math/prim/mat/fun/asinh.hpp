@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_ASINH_HPP
 #define STAN_MATH_PRIM_MAT_FUN_ASINH_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <stan/math/prim/scal/fun/asinh.hpp>
 
 namespace stan {
@@ -24,8 +24,8 @@ struct asinh_fun {
 /**
  * Vectorized version of asinh().
  *
- * @tparam T Container type.
- * @param x Container.
+ * @tparam T type of container
+ * @param x container
  * @return Inverse hyperbolic sine of each value in the container.
  */
 template <typename T>

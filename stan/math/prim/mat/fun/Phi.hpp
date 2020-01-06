@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_PHI_HPP
 #define STAN_MATH_PRIM_MAT_FUN_PHI_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <stan/math/prim/scal/fun/Phi.hpp>
 
 namespace stan {
@@ -9,8 +9,9 @@ namespace math {
 
 /**
  * Structure to wrap Phi() so it can be vectorized.
- * @param x Argument variable.
- * @tparam T Argument type.
+ *
+ * @tparam T type of argument
+ * @param x argument
  * @return Unit normal CDF of x.
  */
 struct Phi_fun {
@@ -22,8 +23,9 @@ struct Phi_fun {
 
 /**
  * Vectorized version of Phi().
- * @param x Container.
- * @tparam T Container type.
+ *
+ * @tparam T type of container
+ * @param x container
  * @return Unit normal CDF of each value in x.
  */
 template <typename T>

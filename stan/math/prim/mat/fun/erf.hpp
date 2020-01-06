@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_ERF_HPP
 #define STAN_MATH_PRIM_MAT_FUN_ERF_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <stan/math/prim/scal/fun/erf.hpp>
 
 namespace stan {
@@ -10,8 +10,8 @@ namespace math {
 /**
  * Structure to wrap erf() so it can be vectorized.
  *
- * @tparam T Variable type.
- * @param x Variable.
+ * @tparam T type of variable
+ * @param x variable
  * @return Error function of x.
  */
 struct erf_fun {
@@ -24,8 +24,8 @@ struct erf_fun {
 /**
  * Vectorized version of erf().
  *
- * @tparam T Container type.
- * @param x Container.
+ * @tparam T type of container
+ * @param x container
  * @return Error function applied to each value in x.
  */
 template <typename T>

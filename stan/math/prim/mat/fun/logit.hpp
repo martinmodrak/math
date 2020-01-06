@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_LOGIT_HPP
 #define STAN_MATH_PRIM_MAT_FUN_LOGIT_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <stan/math/prim/scal/fun/logit.hpp>
 
 namespace stan {
@@ -14,7 +14,7 @@ struct logit_fun {
   /**
    * Return the log odds of the specified argument.
    *
-   * @tparam T argument type
+   * @tparam T type of argument
    * @param x argument
    * @return log odds of the argument
    */
@@ -30,7 +30,7 @@ struct logit_fun {
  * underlying scalar argument type to double if it is an integer,
  * and otherwise is the argument type.
  *
- * @tparam T container type
+ * @tparam T type of container
  * @param x container
  * @return elementwise logit of container elements
  */

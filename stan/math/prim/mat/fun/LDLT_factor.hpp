@@ -1,8 +1,10 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_LDLT_FACTOR_HPP
 #define STAN_MATH_PRIM_MAT_FUN_LDLT_FACTOR_HPP
 
-#include <stan/math/prim/mat/err/check_square.hpp>
+#include <stan/math/prim/err/check_square.hpp>
 #include <stan/math/prim/mat/fun/Eigen.hpp>
+#include <stan/math/prim/mat/fun/log.hpp>
+#include <stan/math/prim/mat/fun/sum.hpp>
 #include <stan/math/prim/scal/fun/is_nan.hpp>
 #include <boost/shared_ptr.hpp>
 
@@ -18,12 +20,12 @@ namespace math {
  * <code>boost::shared_ptr</code>, which ensures that is freed
  * when the object is released.
  *
- * After the constructor and/or compute() is called users of
+ * After the constructor and/or compute() is called, users of
  * LDLT_factor are responsible for calling success() to
  * check whether the factorization has succeeded.  Use of an LDLT_factor
  * object (e.g., in mdivide_left_ldlt) is undefined if success() is false.
  *
- * It's usage pattern is:
+ * Its usage pattern is:
  *
  * ~~~
  * Eigen::Matrix<T, R, C> A1, A2;
@@ -55,9 +57,9 @@ namespace math {
  * decomposed as LDL' where L is unit lower-triangular and D is
  * diagonal with positive diagonal elements.
  *
- * @tparam T scalare type held in the matrix
- * @tparam R rows (as in Eigen)
- * @tparam C columns (as in Eigen)
+ * @tparam T type of elements in the matrix
+ * @tparam R number of rows, can be Eigen::Dynamic
+ * @tparam C number of columns, can be Eigen::Dynamic
  */
 template <typename T, int R, int C>
 class LDLT_factor {
@@ -96,7 +98,7 @@ class LDLT_factor {
     return true;
   }
 
-  inline T log_abs_det() const { return ldltP_->vectorD().array().log().sum(); }
+  inline T log_abs_det() const { return sum(log(ldltP_->vectorD())); }
 
   inline void inverse(matrix_t& invA) const {
     invA.setIdentity(N_);
@@ -126,4 +128,5 @@ class LDLT_factor {
 
 }  // namespace math
 }  // namespace stan
+
 #endif

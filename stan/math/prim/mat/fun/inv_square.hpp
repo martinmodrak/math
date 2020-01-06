@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_INV_SQUARE_HPP
 #define STAN_MATH_PRIM_MAT_FUN_INV_SQUARE_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <stan/math/prim/scal/fun/inv_square.hpp>
 
 namespace stan {
@@ -9,8 +9,9 @@ namespace math {
 
 /**
  * Structure to wrap inv_square() so that it can be vectorized.
- * @param x Variable.
- * @tparam T Variable type.
+ *
+ * @tparam T type of variable
+ * @param x variable
  * @return 1 / x squared.
  */
 struct inv_square_fun {
@@ -22,8 +23,9 @@ struct inv_square_fun {
 
 /**
  * Vectorized version of inv_square().
- * @param x Container.
- * @tparam T Container type.
+ *
+ * @tparam T type of container
+ * @param x container
  * @return 1 / the square of each value in x.
  */
 template <typename T>

@@ -3,9 +3,10 @@
 
 #include <stan/math/rev/meta.hpp>
 #include <stan/math/prim/mat/fun/Eigen.hpp>
-#include <stan/math/rev/mat/functor/adj_jac_apply.hpp>
+#include <stan/math/rev/functor/adj_jac_apply.hpp>
 #include <tuple>
 #include <vector>
+#include <cmath>
 
 namespace stan {
 namespace math {
@@ -31,6 +32,7 @@ class ordered_constrain_op {
   Eigen::VectorXd operator()(const std::array<bool, size>& needs_adj,
                              const Eigen::VectorXd& x) {
     N_ = x.size();
+    using std::exp;
 
     Eigen::Matrix<double, Eigen::Dynamic, 1> y(N_);
     if (N_ == 0) {

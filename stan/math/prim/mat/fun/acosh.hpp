@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_ACOSH_HPP
 #define STAN_MATH_PRIM_MAT_FUN_ACOSH_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <stan/math/prim/scal/fun/acosh.hpp>
 
 namespace stan {
@@ -14,9 +14,9 @@ struct acosh_fun {
   /**
    * Return the inverse hypberbolic cosine of the specified argument.
    *
-   * @param x Argument.
+   * @tparam T type of argument
+   * @param x argument
    * @return Inverse hyperbolic cosine of the argument.
-   * @tparam T Argument type.
    */
   template <typename T>
   static inline T fun(const T& x) {
@@ -30,8 +30,8 @@ struct acosh_fun {
  * underlying scalar argument type to double if it is an integer,
  * and otherwise is the argument type.
  *
- * @tparam T Container type.
- * @param x Container.
+ * @tparam T type of container
+ * @param x container
  * @return Elementwise acosh of members of container.
  */
 template <typename T>

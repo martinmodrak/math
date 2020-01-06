@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_INV_SQRT_HPP
 #define STAN_MATH_PRIM_MAT_FUN_INV_SQRT_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <stan/math/prim/scal/fun/inv_sqrt.hpp>
 
 namespace stan {
@@ -9,8 +9,9 @@ namespace math {
 
 /**
  * Structure to wrap inv_sqrt() so that it can be vectorized.
- * @param x Variable.
- * @tparam T Variable type.
+ *
+ * @tparam T type of variable
+ * @param x variable
  * @return 1 / sqrt of x.
  */
 struct inv_sqrt_fun {
@@ -22,8 +23,9 @@ struct inv_sqrt_fun {
 
 /**
  * Vectorized version of inv_sqrt().
- * @param x Container.
- * @tparam T Container type.
+ *
+ * @tparam T type of container
+ * @param x container
  * @return 1 / sqrt of each value in x.
  */
 template <typename T>

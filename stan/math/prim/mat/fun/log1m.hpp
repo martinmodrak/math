@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_LOG1M_HPP
 #define STAN_MATH_PRIM_MAT_FUN_LOG1M_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <stan/math/prim/scal/fun/log1m.hpp>
 
 namespace stan {
@@ -9,8 +9,9 @@ namespace math {
 
 /**
  * Structure to wrap log1m() so it can be vectorized.
- * @param x Variable.
- * @tparam T Variable type.
+ *
+ * @tparam T type of variable
+ * @param x variable
  * @return Natural log of (1 - x).
  */
 struct log1m_fun {
@@ -22,8 +23,9 @@ struct log1m_fun {
 
 /**
  * Vectorized version of log1m().
- * @param x Container.
- * @tparam T Container type.
+ *
+ * @tparam T type of container
+ * @param x container
  * @return Natural log of 1 minus each value in x.
  */
 template <typename T>

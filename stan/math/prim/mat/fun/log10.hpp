@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_LOG10_HPP
 #define STAN_MATH_PRIM_MAT_FUN_LOG10_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <cmath>
 
 namespace stan {
@@ -9,8 +9,9 @@ namespace math {
 
 /**
  * Structure to wrap log10() so it can be vectorized.
- * @param x Variable.
- * @tparam T Variable type.
+ *
+ * @tparam T type of variable
+ * @param x variable
  * @return Log base-10 of x.
  */
 struct log10_fun {
@@ -23,8 +24,9 @@ struct log10_fun {
 
 /**
  * Vectorized version of log10().
- * @param x Container.
- * @tparam T Container type.
+ *
+ * @tparam T type of container
+ * @param x container
  * @return Log base-10 applied to each value in x.
  */
 template <typename T>

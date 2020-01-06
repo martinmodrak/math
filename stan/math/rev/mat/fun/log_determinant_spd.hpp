@@ -2,10 +2,10 @@
 #define STAN_MATH_REV_MAT_FUN_LOG_DETERMINANT_SPD_HPP
 
 #include <stan/math/rev/meta.hpp>
-#include <stan/math/prim/scal/err/domain_error.hpp>
-#include <stan/math/prim/scal/err/check_finite.hpp>
-#include <stan/math/prim/mat/err/check_symmetric.hpp>
+#include <stan/math/prim/err.hpp>
 #include <stan/math/prim/mat/fun/Eigen.hpp>
+#include <stan/math/prim/mat/fun/log.hpp>
+#include <stan/math/prim/mat/fun/sum.hpp>
 #include <stan/math/prim/mat/fun/typedefs.hpp>
 #include <stan/math/rev/core.hpp>
 
@@ -23,8 +23,8 @@ inline var log_determinant_spd(const Eigen::Matrix<var, R, C>& m) {
   Eigen::LDLT<matrix_d> ldlt(m_d);
   if (ldlt.info() != Eigen::Success) {
     double y = 0;
-    domain_error("log_determinant_spd", "matrix argument", y,
-                 "failed LDLT factorization");
+    throw_domain_error("log_determinant_spd", "matrix argument", y,
+                       "failed LDLT factorization");
   }
 
   // compute the inverse of A (needed for the derivative)
@@ -33,11 +33,11 @@ inline var log_determinant_spd(const Eigen::Matrix<var, R, C>& m) {
 
   if (ldlt.isNegative() || (ldlt.vectorD().array() <= 1e-16).any()) {
     double y = 0;
-    domain_error("log_determinant_spd", "matrix argument", y,
-                 "matrix is negative definite");
+    throw_domain_error("log_determinant_spd", "matrix argument", y,
+                       "matrix is negative definite");
   }
 
-  double val = ldlt.vectorD().array().log().sum();
+  double val = sum(log(ldlt.vectorD()));
 
   check_finite("log_determinant_spd",
                "log determininant of the matrix argument", val);

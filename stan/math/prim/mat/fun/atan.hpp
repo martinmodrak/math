@@ -1,7 +1,7 @@
 #ifndef STAN_MATH_PRIM_MAT_FUN_ATAN_HPP
 #define STAN_MATH_PRIM_MAT_FUN_ATAN_HPP
 
-#include <stan/math/prim/mat/vectorize/apply_scalar_unary.hpp>
+#include <stan/math/prim/vectorize/apply_scalar_unary.hpp>
 #include <cmath>
 
 namespace stan {
@@ -9,8 +9,9 @@ namespace math {
 
 /**
  * Structure to wrap atan() so it can be vectorized.
- * @param x Variable.
- * @tparam T Variable type.
+ *
+ * @tparam T type of variable
+ * @param x variable
  * @return Arctan of x in radians.
  */
 struct atan_fun {
@@ -22,9 +23,10 @@ struct atan_fun {
 };
 
 /**
- * Vectorized version of asinh().
- * @param x Container.
- * @tparam T Container type.
+ * Vectorized version of atan().
+ *
+ * @tparam T type of container
+ * @param x container
  * @return Arctan of each value in x, in radians.
  */
 template <typename T>

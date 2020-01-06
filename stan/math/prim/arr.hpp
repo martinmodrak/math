@@ -2,13 +2,8 @@
 #define STAN_MATH_PRIM_ARR_HPP
 
 #include <stan/math/prim/meta.hpp>
+#include <stan/math/prim/err.hpp>
 
-#include <stan/math/prim/arr/err/check_matching_sizes.hpp>
-#include <stan/math/prim/arr/err/check_nonzero_size.hpp>
-#include <stan/math/prim/arr/err/check_ordered.hpp>
-#include <stan/math/prim/arr/err/is_matching_size.hpp>
-#include <stan/math/prim/arr/err/is_nonzero_size.hpp>
-#include <stan/math/prim/arr/err/is_ordered.hpp>
 #include <stan/math/prim/arr/fun/array_builder.hpp>
 #include <stan/math/prim/arr/fun/common_type.hpp>
 #include <stan/math/prim/arr/fun/dot.hpp>
@@ -27,13 +22,13 @@
 #include <stan/math/prim/arr/fun/value_of.hpp>
 #include <stan/math/prim/arr/fun/value_of_rec.hpp>
 
-#include <stan/math/prim/arr/functor/coupled_ode_observer.hpp>
-#include <stan/math/prim/arr/functor/coupled_ode_system.hpp>
-#include <stan/math/prim/arr/functor/integrate_1d.hpp>
-#include <stan/math/prim/arr/functor/integrate_ode_rk45.hpp>
-#include <stan/math/prim/arr/functor/mpi_command.hpp>
-#include <stan/math/prim/arr/functor/mpi_distributed_apply.hpp>
-#include <stan/math/prim/arr/functor/mpi_cluster.hpp>
+#include <stan/math/prim/functor/coupled_ode_observer.hpp>
+#include <stan/math/prim/functor/coupled_ode_system.hpp>
+#include <stan/math/prim/functor/integrate_1d.hpp>
+#include <stan/math/prim/functor/integrate_ode_rk45.hpp>
+#include <stan/math/prim/functor/mpi_command.hpp>
+#include <stan/math/prim/functor/mpi_distributed_apply.hpp>
+#include <stan/math/prim/functor/mpi_cluster.hpp>
 
 #include <stan/math/prim/scal.hpp>
 
