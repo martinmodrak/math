@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <test/unit/math/rev/util.hpp>
 #include <test/unit/math/rev/fun/util.hpp>
+#include <test/unit/math/expect_near_rel.hpp>
 #include <fstream>
 #include <iostream>
 #include <limits>
@@ -115,6 +116,7 @@ const char* computation_type_to_string(ComputationType c) {
 // Using the recurrence relation (adapted to log)
 // http://functions.wolfram.com/Bessel-TypeFunctions/BesselK/17/01/01/
 void test_single_pair(const double &v, const double &z, std::ostream* debug_output) {
+  using stan::test::expect_near_rel;
   AVAR v_var(v);
   AVAR z_var(z);
 
@@ -171,34 +173,27 @@ void test_single_pair(const double &v, const double &z, std::ostream* debug_outp
       }
     }
 
-    AVAR ratio = left_hand / right_hand;
+    expect_near_rel("value", left_hand.val(), right_hand.val(), allowed_recurrence_error);
 
-    EXPECT_NEAR(ratio.val(), 1.0, allowed_recurrence_error);
-
-    AVEC x = createAVEC(v_var, z_var, left_hand, right_hand, log_K_vm2, log_K_vm1,log_K_vp1, log_K_vp1);
-    VEC g;
-    ratio.grad(x, g);
-    double d_dv = g[0];
-    double d_dz = g[1];
-    EXPECT_NEAR(d_dv, 0, allowed_recurrence_error);
-    EXPECT_NEAR(d_dz, 0, allowed_recurrence_error);
+    AVEC x = createAVEC(v_var, z_var);
+    VEC g_left;
+    left_hand.grad(x, g_left);
+    stan::math::set_zero_all_adjoints();
+    VEC g_right;
+    right_hand.grad(x, g_right);
+    expect_near_rel("dv", g_left[0], g_right[0], allowed_recurrence_error);
+    expect_near_rel("dz", g_left[1], g_right[1], allowed_recurrence_error);
     if (debug_output != 0) {
-      double d_left_hand = g[2];
-      double d_right_hand = g[3];
-      double d_value_m2 = g[4];
-      double d_value_m1 = g[5];
-      double d_value_p1 = g[6];
-      double d_value_p2 = g[7];
-      *debug_output << std::setprecision(18) << std::fixed
+      *debug_output << std::setprecision(24) << std::fixed
                     << v << "," << z << ","
                     << computation_type_to_string(
                             choose_computation_type(v, z))
-                    << "," << ratio.val() << "," << d_dv << "," << d_dz
+                    << "," << left_hand.val() << "," << g_left[0] 
+                    << "," << g_left[1]
+                    << "," << right_hand.val() << "," << g_right[0] 
+                    << "," << g_right[1]
                     << "," << log_K_vm2 << "," << log_K_vm1 << ","
-                    << left_hand << "," << log_K_vp1 << "," << log_K_vp2 << ","
-                    << d_left_hand  << "," << d_right_hand << "," 
-                    << d_value_m2 << "," << d_value_m1 << "," 
-                    << d_value_p1 << "," << d_value_p2
+                    << left_hand << "," << log_K_vp1 << "," << log_K_vp2
                     << std::endl;
       std::flush(*debug_output);
     }
@@ -234,9 +229,9 @@ TEST(AgradRev, log_modified_bessel_second_kind_frac_recurrence) {
   std::ostream* debug_output = 0;
   if (output_debug_csv) {
     debug_output = new std::ofstream("log_besselk_test.csv");
-    *debug_output << "v,z,method,ratio,grad_z,grad_v,value_m2,value_m1,"
-                     "value,value_p1,value_p2, d_left_hand, d_right_hand,"
-                     "d_value_m2,d_value_m1,d_value_p1,d_value_p2"
+    *debug_output << "v,z,method,left_value,left_dv,left_dz,"
+                     "right_value,right_dv,right_dz,value_m2,value_m1,"
+                     "value,value_p1,value_p2"
                   << std::endl;
   }
 
@@ -403,7 +398,7 @@ struct TestValue {
 //     }]
 //   }];
 // Print["};"]
-std::array<TestValue, 48> testValues = {
+std::vector<TestValue> testValues = {
     TestValue(3.e-8, 4.e-8, 2.842016709795352,
               2.965102177697192015626573541625171847363e-6,
               -1.4576989270969522e6),
@@ -548,89 +543,106 @@ std::array<TestValue, 48> testValues = {
 
 double allowed_rel_error = 1e-8;
 
-::testing::AssertionResult check_relative_error(double expected,
-                                                double actual) {
-  ::testing::AssertionResult base_result = ::testing::AssertionSuccess();
-  double difference = fabs(expected - actual);
-  double threshold = fabs(allowed_rel_error * expected);
-  if (difference > threshold) {
-    base_result = ::testing::AssertionFailure();
-  }
-
-  return base_result << "Expected: " << expected << " actual: " << actual
-                     << " difference: " << difference
-                     << " threshold: " << threshold;
-}
-
 #define EXPECT_REL_ERROR(a, b) EXPECT_TRUE(check_relative_error(a, b))
 
 TEST(AgradRev, log_modified_bessel_second_kind_frac_double_double) {
-  std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
+  for(TestValue test : testValues) {
     double f1 = log_modified_bessel_second_kind_frac(test.v, test.z);
-    EXPECT_REL_ERROR(test.value, f1)
-        << "ratio at v = " << test.v << ", z = " << test.z;
-  });
+    std::stringstream msg;
+    msg << std::setprecision(22) << "ratio at v = " << test.v 
+      << ", z = " << test.z;
+    stan::test::expect_near_rel(msg.str(), test.value, f1);        
+  }
 }
 
 TEST(AgradRev, log_modified_bessel_second_kind_frac_double_var) {
-  std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
+  using stan::test::expect_near_rel;
+  for(TestValue test : testValues) {
     AVAR z(test.z);
     try {
+      std::stringstream msg_base;
+      msg_base << std::setprecision(22) << " at v = " << test.v 
+        << ", z = " << test.z;
+
       AVAR f = log_modified_bessel_second_kind_frac(test.v, z);
-      EXPECT_REL_ERROR(test.value, f.val())
-          << "ratio at v = " << test.v << ", z = " << test.z;
+      std::stringstream msg_ratio;
+      msg_ratio << "ratio" << msg_base.str();
+      expect_near_rel(msg_ratio.str(), test.value, f.val());
 
       AVEC x = createAVEC(z);
       VEC g;
       f.grad(x, g);
-      EXPECT_REL_ERROR(test.grad_z, g[0])
-          << "grad_z at v = " << test.v << ", z = " << test.z;
+
+      std::stringstream msg_grad_z;
+      msg_grad_z << "grad_z" << msg_base.str();
+
+      expect_near_rel(msg_grad_z.str(), test.grad_z, g[0]);
     } catch (const std::domain_error& err) {
       std::cout << "\nAt v = " << test.v << ", z = " << test.z << ":\n";
       throw;
     }
-  });
+  }
 }
 
 TEST(AgradRev, log_modified_bessel_second_kind_frac_var_double) {
-  std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
+  using stan::test::expect_near_rel;
+  for(TestValue test : testValues) {
     try {
+      std::stringstream msg_base;
+      msg_base << std::setprecision(22) << " at v = " << test.v 
+        << ", z = " << test.z;
+
+
       AVAR v(test.v);
       AVAR f = log_modified_bessel_second_kind_frac(v, test.z);
-      EXPECT_REL_ERROR(test.value, f.val())
-          << "ratio at v = " << test.v << ", z = " << test.z;
+      std::stringstream msg_ratio;
+      msg_ratio << "ratio" << msg_base.str();
+      expect_near_rel(msg_ratio.str(), test.value, f.val());
 
       AVEC x = createAVEC(v);
       VEC g;
       f.grad(x, g);
-      EXPECT_REL_ERROR(test.grad_v, g[0])
-          << "grad_v at v = " << test.v << ", z = " << test.z;
+      std::stringstream msg_grad_v;
+      msg_grad_v << "grad_v" << msg_base.str();
+
+      expect_near_rel(msg_grad_v.str(), test.grad_v, g[0]);
     } catch (const std::domain_error& err) {
       std::cout << "\nAt v = " << test.v << ", z = " << test.z << ":\n";
       throw;
     }
-  });
+  }
 }
 
 TEST(AgradRev, log_modified_bessel_second_kind_frac_var_var) {
-  std::for_each(testValues.begin(), testValues.end(), [](TestValue test) {
+  using stan::test::expect_near_rel;
+  for(TestValue test : testValues) {
     try {
+      std::stringstream msg_base;
+      msg_base << std::setprecision(22) << " at v = " << test.v 
+        << ", z = " << test.z;
+
       AVAR v(test.v);
       AVAR z(test.z);
       AVAR f = log_modified_bessel_second_kind_frac(v, z);
-      EXPECT_REL_ERROR(test.value, f.val())
-          << "ratio at v = " << test.v << ", z = " << test.z;
+      std::stringstream msg_ratio;
+      msg_ratio << "ratio" << msg_base.str();
+      expect_near_rel(msg_ratio.str(), test.value, f.val());
 
       AVEC x = createAVEC(v, z);
       VEC g;
       f.grad(x, g);
-      EXPECT_REL_ERROR(test.grad_v, g[0])
-          << "grad_v at v = " << test.v << ", z = " << test.z;
-      EXPECT_REL_ERROR(test.grad_z, g[1])
-          << "grad_z at v = " << test.v << ", z = " << test.z;
+      std::stringstream msg_grad_v;
+      msg_grad_v << "grad_v" << msg_base.str();
+
+      expect_near_rel(msg_grad_v.str(), test.grad_v, g[0]);
+
+      std::stringstream msg_grad_z;
+      msg_grad_z << "grad_z" << msg_base.str();
+
+      expect_near_rel(msg_grad_z.str(), test.grad_z, g[1]);
     } catch (const std::domain_error& err) {
       std::cout << "\nAt v = " << test.v << ", z = " << test.z << ":\n";
       throw;
     }
-  });
+  }
 }

@@ -107,7 +107,7 @@ class inner_integral_rothwell {
     boost::math::quadrature::tanh_sinh<value_type> integrator;
     T_Ret value = integrator.integrate(*this, 0.0, 1.0, tolerance, &error, &L1,
                                        &levels);
-    if (error > 1e-8 * L1) {
+    if (error > 1e-7 * L1) {
       domain_error("inner_integral_rothwell",
                    "error estimate of integral / L1 ", error / L1, "",
                    "is larger than 1e-8");
@@ -189,41 +189,42 @@ T_v asymptotic_large_z(const T_v &v, const double &z) {
   using std::log;
   using std::pow;
 
-  //Choosing max terms to avoid negative values
-  const int max_terms = std::min(1000, static_cast<int>(floor(value_of(v) + 0.5)));
-
   const double log_z = log(z);
   const double base = 0.5 * (log(pi()) - log(2) - log_z) - z; 
 
-  std::vector<T_v> log_sum_terms;
-  log_sum_terms.reserve(max_terms);
-  log_sum_terms.push_back(0);
-  
-  T_v log_v_sq_4 = 2 * (log(v) + log(2));
-  T_v log_a_k_z_k = 0;  
-  for (int k = 1; k < max_terms; k++) {
-    log_a_k_z_k += log_diff_exp(log_v_sq_4, 2 * log(2 * k - 1)) - log(k) - log(z) - log(8);
-    log_sum_terms.push_back(log_a_k_z_k);
-    //TODO figure out a good stopping criterion
-    // if(log_a_k_z_k < 30) {
-    //   break;
-    // }
-  }
-  return base + log_sum_exp(log_sum_terms);
+  //Choosing max terms to avoid negative values
+   //const int max_terms = std::min(1000, static_cast<int>(floor(value_of(v) + 0.5)));
 
 
-  // T_v series_sum(1);
-  // T_v a_k_z_k(1);
-  // const T_v v_squared_4 = v * v * 4;
+  // std::vector<T_v> log_sum_terms;
+  // log_sum_terms.reserve(max_terms);
+  // log_sum_terms.push_back(0);
   
+  // T_v log_v_sq_4 = 2 * (log(v) + log(2));
+  // T_v log_a_k_z_k = 0;  
   // for (int k = 1; k < max_terms; k++) {
-  //   a_k_z_k *= (v_squared_4 - boost::math::pow<2>(2 * k - 1)) / (k * z * 8);
-  //   series_sum += a_k_z_k;
-  //   if(fabs(a_k_z_k) < 1e-8) {
-  //     break;
-  //   }
+  //   log_a_k_z_k += log_diff_exp(log_v_sq_4, 2 * log(2 * k - 1)) - log(k) - log(z) - log(8);
+  //   log_sum_terms.push_back(log_a_k_z_k);
+  //   //TODO(martinmodrak) figure out a good stopping criterion
+  //   // if(log_a_k_z_k < 30) {
+  //   //   break;
+  //   // }
   // }
-  // return base + log(series_sum);
+  // return base + log_sum_exp(log_sum_terms);
+
+  const int max_terms = 50;
+  T_v series_sum(1);
+  T_v a_k_z_k(1);
+  const T_v v_squared_4 = v * v * 4;
+  
+  for (int k = 1; k < max_terms; k++) {
+    a_k_z_k *= (v_squared_4 - boost::math::pow<2>(2 * k - 1)) / (k * z * 8);
+    series_sum += a_k_z_k;
+    if(fabs(a_k_z_k) < 1e-8) {
+      break;
+    }
+  }
+  return base + log(series_sum);
 }
 
 template <typename T_v>
@@ -293,7 +294,7 @@ T_v trapezoid_cosh(const T_v &v, const double &z) {
     const double x = n * h;
     const T_v last_term = logcosh(v * x) - z * cosh(x);
     terms.push_back(last_term);
-    //TODO create some sensible stopping criterion
+    //TODO(martinmodrak) create some sensible stopping criterion
   }
   return log_sum_exp(terms) + std::log(h);
 }
@@ -429,7 +430,7 @@ const double asymp_z_slope = 1;
 const double asymp_z_intercept = -4;
 
 const double rothwell_max_v = 50;
-const double rothwell_max_z = 1000;
+const double rothwell_max_z = 100000;
 const double rothwell_max_log_z_over_v = 300;
 
 const double trapezoid_min_v = 100;
