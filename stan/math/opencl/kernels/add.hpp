@@ -4,47 +4,17 @@
 
 #include <stan/math/opencl/kernel_cl.hpp>
 #include <stan/math/opencl/buffer_types.hpp>
+#include <stan/math/opencl/matrix_cl_view.hpp>
+#include <string>
 
 namespace stan {
 namespace math {
 namespace opencl_kernels {
-// \cond
-static const char *add_kernel_code = STRINGIFY(
-    // \endcond
-    /**
-     * Matrix addition on the OpenCL device
-     *
-     * @param[out] C Output matrix.
-     * @param[in] A LHS of matrix addition.
-     * @param[in] B RHS of matrix addition.
-     * @param rows Number of rows for matrix A.
-     * @param cols Number of cols for matrix A.
-     * @note Code is a <code>const char*</code> held in
-     * <code>add_kernel_code.</code>
-     * This kernel uses the helper macros available in helpers.cl.
-     */
-    __kernel void add(__global double *C, __global double *A,
-                      __global double *B, unsigned int rows,
-                      unsigned int cols) {
-      const int i = get_global_id(0);
-      const int j = get_global_id(1);
-      if (i < rows && j < cols) {
-        C(i, j) = A(i, j) + B(i, j);
-      }
-    }
-    // \cond
-);
-// \endcond
 
-/**
- * See the docs for \link kernels/add.hpp add() \endlink
- */
-const kernel_cl<out_buffer, in_buffer, in_buffer, int, int> add(
-    "add", {indexing_helpers, add_kernel_code});
 // \cond
-static const char *add_batch_kernel_code = STRINGIFY(
+static const std::string add_batch_kernel_code = STRINGIFY(
     // \endcond
-    /**
+    /** \ingroup opencl_kernels
      * Sums a batch of matrices. Buffer A contains
      * batch_size matrices of size rows x cols. All elements
      * at matching indices are summed up and stored to the
@@ -76,7 +46,7 @@ static const char *add_batch_kernel_code = STRINGIFY(
 );
 // \endcond
 
-/**
+/** \ingroup opencl_kernels
  * See the docs for \link kernels/add.hpp add_batch() \endlink
  */
 const kernel_cl<out_buffer, in_buffer, int, int, int> add_batch(
