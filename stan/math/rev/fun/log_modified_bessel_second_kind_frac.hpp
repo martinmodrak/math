@@ -424,7 +424,7 @@ const double gamma_low_z = 0.01;
 const double gamma_low_v = 0.001;
 
 const double asymp_v_slope = 1;
-const double asymp_v_intercept = 5.5;
+const double asymp_v_intercept = 11;
 
 const double asymp_z_slope = 1;
 const double asymp_z_intercept = -4;
@@ -450,20 +450,24 @@ inline ComputationType choose_computation_type(const double &v,
 
   if(v_ < gamma_low_v && z < gamma_low_z) {
     return ComputationType::Rothwell;
-  } else if(v_ < gamma_max_v && z < gamma_max_z) {
+  } 
+  if(v_ < gamma_max_v && z < gamma_max_z) {
     return ComputationType::IntegralGamma;
-  } else if(v_ < rothwell_max_v && z < rothwell_max_z &&
+  }
+  if(v_ < rothwell_max_v && z < rothwell_max_z &&
       (v_ <= 0.5 || log(z) < get_rothwell_log_z_boundary(v_))) {
     return ComputationType::Rothwell;
-  } else if (log_v < asymp_v_slope * log_z + asymp_v_intercept &&
+  }
+  if (log_v < asymp_v_slope * log_z + asymp_v_intercept &&
              log_v > asymp_z_slope * log_z + asymp_z_intercept &&
              (v_ > trapezoid_min_v || v > z)) {
     return ComputationType::TrapezoidCosh;
-  } else if (v_ > z) {
+  } 
+  if (v_ > z) {
     return ComputationType::Asymp_v;
-  } else {
-    return ComputationType::Asymp_z;
-  }
+  } 
+
+  return ComputationType::Asymp_z;
   
   // if (v_ >= rothwell_max_v &&  
   //     (log_v > asymp_v_slope * log_z + asymp_v_intercept)) {
