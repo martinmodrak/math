@@ -1,32 +1,32 @@
-#ifndef STAN_MATH_REV_SCAL_FUN_LOG_MODIFIED_BESSEL_SECOND_KIND_FRAC_HPP
-#define STAN_MATH_REV_SCAL_FUN_LOG_MODIFIED_BESSEL_SECOND_KIND_FRAC_HPP
+#ifndef STAN_MATH_REV_FUN_LOG_MODIFIED_BESSEL_SECOND_KIND_FRAC_HPP
+#define STAN_MATH_REV_FUN_LOG_MODIFIED_BESSEL_SECOND_KIND_FRAC_HPP
 
 #include <stan/math/rev/core.hpp>
-#include <stan/math/rev/scal/fun/value_of.hpp>
-#include <stan/math/prim/scal/fun/value_of.hpp>
-#include <stan/math/rev/scal/fun/to_var.hpp>
+#include <stan/math/rev/fun/value_of.hpp>
+#include <stan/math/prim/fun/value_of.hpp>
+#include <stan/math/rev/fun/to_var.hpp>
 
-#include <stan/math/rev/scal/fun/pow.hpp>
-#include <stan/math/rev/scal/fun/fabs.hpp>
+#include <stan/math/rev/fun/pow.hpp>
+#include <stan/math/rev/fun/fabs.hpp>
 
-#include <stan/math/rev/scal/fun/cos.hpp>
+#include <stan/math/rev/fun/cos.hpp>
 
-#include <stan/math/rev/scal/fun/exp.hpp>
-#include <stan/math/prim/scal/fun/exp.hpp>
-#include <stan/math/prim/scal/fun/log_diff_exp.hpp>
-#include <stan/math/prim/scal/fun/log1p_exp.hpp>
-#include <stan/math/rev/arr/fun/log_sum_exp.hpp>
+#include <stan/math/rev/fun/exp.hpp>
+#include <stan/math/prim/fun/exp.hpp>
+#include <stan/math/prim/fun/log_diff_exp.hpp>
+#include <stan/math/prim/fun/log1p_exp.hpp>
+#include <stan/math/rev/fun/log_sum_exp.hpp>
 
-#include <stan/math/rev/scal/fun/digamma.hpp>
+#include <stan/math/rev/fun/digamma.hpp>
 
-#include <stan/math/rev/scal/meta/is_var.hpp>
-#include <stan/math/prim/scal/meta/return_type.hpp>
+#include <stan/math/rev/meta/is_var.hpp>
+#include <stan/math/prim/meta/return_type.hpp>
 
-#include <stan/math/prim/scal/err/domain_error.hpp>
+#include <stan/math/prim/err/domain_error.hpp>
 
 #include <boost/math/quadrature/tanh_sinh.hpp>
 #include <boost/math/quadrature/exp_sinh.hpp>
-#include <boost/math/tools/numerical_differentiation.hpp>
+#include <boost/math/differentiation/finite_difference.hpp>
 #include <boost/math/tools/roots.hpp>
 #include <tuple> // for std::tuple and std::make_tuple.
 
@@ -163,7 +163,7 @@ var compute_log_integral_rothwell(const var &v, const double &z) {
   auto complex_func
       = [z](const Complex &v) { return compute_log_integral_rothwell(v, z); };
 
-  double d_dv = boost::math::tools::complex_step_derivative(
+  double d_dv = boost::math::differentiation::complex_step_derivative(
       complex_func, stan::math::value_of(v));
 
   return var(new precomp_v_vari(value, v.vi_, d_dv));
@@ -191,7 +191,7 @@ T_v asymptotic_large_v(const T_v &v, const double &z) {
 
   // return 0.5 * (log(stan::math::pi()) - log(2) - log(v)) - v * (log(z) -
   // log(2) - log(v));
-  return lgamma(v) - stan::math::LOG_2 + v * (stan::math::LOG_2 - log(z));
+  return lgamma(v) - stan::math::LOG_TWO + v * (stan::math::LOG_TWO - log(z));
 }
 
 // Formula 10.40.2 from https://dlmf.nist.gov/10.40
@@ -278,7 +278,7 @@ var integral_gamma(const var &v, const double &z) {
   auto complex_func
       = [z](const Complex &complex_v) { return integral_gamma(complex_v, z); };
 
-  double d_dv = boost::math::tools::complex_step_derivative(
+  double d_dv = boost::math::differentiation::complex_step_derivative(
       complex_func, stan::math::value_of(v));
 
   return var(new precomp_v_vari(value, v.vi_, d_dv)); 
