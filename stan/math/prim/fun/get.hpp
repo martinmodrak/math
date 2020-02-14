@@ -25,6 +25,21 @@ inline T get(const T& x, size_t n) {
 }
 
 /** \ingroup type_trait
+ * Returns the provided element. Complex type overload
+ * for the function to retrieve n-th element of a vector,
+ * \c Eigen \c Matrix or expression
+ *
+ * @param x input complex scalar
+ * @param n index of the element to return
+ * @return input scalar
+ */
+template <typename T, typename = require_stan_scalar_t<T>>
+inline std::complex<T> get(const std::complex<T>& x, size_t n) {
+  return x;
+}
+
+
+/** \ingroup type_trait
  * Returns the n-th element of the provided std::vector.
  *
  * @param x input vector

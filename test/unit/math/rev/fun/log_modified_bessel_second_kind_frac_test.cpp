@@ -19,7 +19,7 @@ using stan::math::log_sum_exp;
 using stan::math::recover_memory;
 using stan::math::var;
 
-std::array<double, 26> v_to_test = {0,
+std::vector<double> v_to_test = {0,
                                     3.15e-7,
                                     2.62e-6,
                                     1.3e-5,
@@ -46,19 +46,19 @@ std::array<double, 26> v_to_test = {0,
                                     37634.2,
                                     85323 };
 
-std::array<double, 19> z_to_test
+std::vector<double> z_to_test
     = {1.48e-7, 3.6e-6,   7.248e-5, 4.32e-4, 8.7e-3, 0.04523, 0.17532,
        1,       3,        11.32465, 105.6,   1038.4, 4236,    11457.6,
        62384,   105321.6, 158742.3, 196754,  1.98e6};
 
-std::array<double, 4> hard_v_boundaries = {
+std::vector<double> hard_v_boundaries = {
   stan::math::besselk_internal::rothwell_max_v,
   stan::math::besselk_internal::gamma_max_v,
   stan::math::besselk_internal::gamma_low_v,
   stan::math::besselk_internal::trapezoid_min_v
 };
 
-std::array<double, 3> hard_z_boundaries = {
+std::vector<double> hard_z_boundaries = {
   stan::math::besselk_internal::rothwell_max_z,
   stan::math::besselk_internal::gamma_max_z,
   stan::math::besselk_internal::gamma_low_z
@@ -211,19 +211,19 @@ void test_single_pair(const double &v, const double &z, std::ostream* debug_outp
   }
 }
 
-template<typename T, size_t N, size_t M>
-auto concat(const std::array<T, N>& ar1, const std::array<T, M>& ar2)
+template<typename T>
+auto concat(const std::vector<T>& ar1, const std::vector<T>& ar2)
 {
-    std::array<T, N+M> result;
+    std::vector<T> result(ar1.size() + ar2.size());
     std::copy (ar1.cbegin(), ar1.cend(), result.begin());
-    std::copy (ar2.cbegin(), ar2.cend(), result.begin() + N);
+    std::copy (ar2.cbegin(), ar2.cend(), result.begin() + ar1.size());
     return result;
 }
 
-template<typename T, size_t N> 
-auto operator+(const std::array<T,N>& ar, const T& b) {
-    std::array<T, N> result;
-    for(int i = 0; i < N; i++) {
+template<typename T> 
+auto operator+(const std::vector<T>& ar, const T& b) {
+    std::vector<T> result(ar.size());
+    for(int i = 0; i < ar.size(); i++) {
       result[i] = ar[i] + b;
     }
     return result;
@@ -255,35 +255,34 @@ TEST(AgradRev, log_modified_bessel_second_kind_frac_recurrence) {
 
   double max_v = -std::numeric_limits<double>::infinity();
   double min_v = std::numeric_limits<double>::infinity();
-  for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
-    max_v = std::max(max_v, *v_iter);
-    min_v = std::min(min_v, *v_iter);
+  for (double v: all_v) {
+    max_v = std::max(max_v, v);
+    min_v = std::min(min_v, v);
   }
 
   double max_z = -std::numeric_limits<double>::infinity();
-  for (auto z_iter = all_z.begin(); z_iter != all_z.end(); ++z_iter) {
-    max_z = std::max(max_z, *z_iter);
+  for (double z: all_z) {
+    max_z = std::max(max_z, z);
   }
 
-  for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
-    for (auto z_iter = all_z.begin(); z_iter != all_z.end(); ++z_iter) {
-      if(*z_iter < 0) { //May arise from the boundaries - 1e-8 test value
+  for (double v: all_v) {
+    for (double z: all_z) {
+      if(z < 0) { //May arise from the boundaries - 1e-8 test value
         continue;
       }
+      //TODO(martinmodrak) resolve
       //for (int sign = -1; sign <= 1; sign += 2) {
       int sign = 1; {
-        double v = sign * (*v_iter);
-        double z = *z_iter;
-        test_single_pair(v, z, debug_output);
+        test_single_pair(sign * v, z, debug_output);
       }
     }
   }
 
   //Test the linear boundaries
-  for (auto z_iter = all_z.begin(); z_iter != all_v.end(); ++z_iter) {
+  for (double z: all_z) {
+      //TODO(martinmodrak) resolve
       //for (int sign = -1; sign <= 1; sign += 2) {
       int sign = 1; {
-        double z = *z_iter;
         if(z < 0) {
           continue;
         }
@@ -322,8 +321,7 @@ TEST(AgradRev, log_modified_bessel_second_kind_frac_recurrence) {
   }
 
   //The final non-linear boundary
-  for (auto v_iter = all_v.begin(); v_iter != all_v.end(); ++v_iter) {
-    double v = *v_iter;
+  for (double v : all_v) {
     if(v < 0.5) {
       continue;
     }

@@ -29,6 +29,11 @@ inline size_t size(const T& m) {
   return m.size();
 }
 
+template <typename T, typename = require_stan_scalar_t<T>>
+inline size_t size(const std::complex<T>& /*x*/) {
+  return 1U;
+}
+
 }  // namespace math
 }  // namespace stan
 #endif

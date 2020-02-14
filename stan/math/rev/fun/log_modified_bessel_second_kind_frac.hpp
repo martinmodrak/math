@@ -1,35 +1,30 @@
 #ifndef STAN_MATH_REV_FUN_LOG_MODIFIED_BESSEL_SECOND_KIND_FRAC_HPP
 #define STAN_MATH_REV_FUN_LOG_MODIFIED_BESSEL_SECOND_KIND_FRAC_HPP
 
-#include <stan/math/rev/core.hpp>
-#include <stan/math/rev/fun/value_of.hpp>
-#include <stan/math/prim/fun/value_of.hpp>
-#include <stan/math/rev/fun/to_var.hpp>
-
-#include <stan/math/rev/fun/pow.hpp>
-#include <stan/math/rev/fun/fabs.hpp>
-
-#include <stan/math/rev/fun/cos.hpp>
-
-#include <stan/math/rev/fun/exp.hpp>
+#include <stan/math/prim/err/domain_error.hpp>
+#include <stan/math/prim/err/is_scal_infinite.hpp>
+#include <stan/math/prim/meta/return_type.hpp>
 #include <stan/math/prim/fun/exp.hpp>
 #include <stan/math/prim/fun/log_diff_exp.hpp>
 #include <stan/math/prim/fun/log1p_exp.hpp>
-#include <stan/math/rev/fun/log_sum_exp.hpp>
+#include <stan/math/prim/fun/value_of.hpp>
 
+#include <stan/math/rev/core.hpp>
+#include <stan/math/rev/fun/cos.hpp>
 #include <stan/math/rev/fun/digamma.hpp>
-
+#include <stan/math/rev/fun/exp.hpp>
+#include <stan/math/rev/fun/fabs.hpp>
+#include <stan/math/rev/fun/log_sum_exp.hpp>
+#include <stan/math/rev/fun/value_of.hpp>
+#include <stan/math/rev/fun/to_var.hpp>
+#include <stan/math/rev/fun/pow.hpp>
 #include <stan/math/rev/meta/is_var.hpp>
-#include <stan/math/prim/meta/return_type.hpp>
 
-#include <stan/math/prim/err/domain_error.hpp>
-
-#include <boost/math/quadrature/tanh_sinh.hpp>
-#include <boost/math/quadrature/exp_sinh.hpp>
 #include <boost/math/differentiation/finite_difference.hpp>
+#include <boost/math/quadrature/exp_sinh.hpp>
+#include <boost/math/quadrature/tanh_sinh.hpp>
 #include <boost/math/tools/roots.hpp>
 #include <tuple> // for std::tuple and std::make_tuple.
-
 #include <limits>
 #include <algorithm>
 
@@ -40,17 +35,6 @@
 namespace stan {
 namespace math {
 
-template <typename _Tp>
-inline int is_inf(const std::complex<_Tp> &c) {
-  return is_inf(c.imag()) || is_inf(c.real());
-}
-
-template <typename _Tp>
-inline bool non_zero(const std::complex<_Tp> &c) {
-  return abs(c) > 0;
-}
-
-inline bool non_zero(const double &c) { return c > 0; }
 
 namespace besselk_internal {
 
@@ -58,17 +42,20 @@ namespace besselk_internal {
 //                    FORMULAE                                //
 ////////////////////////////////////////////////////////////////
 
-// The formulas that contain integrals are split into a function representing
-// the integral body and "lead" - the logarithm of the term before the integral
-// The function object also references the integration method, as some integrate
-// From 0 to 1 and others from 0 to infinity.
+/*
+The formulas that contain integrals are split into a function representing
+the integral body and "lead" - the logarithm of the term before the integral
+The function object also references the integration method, as some integrate
+From 0 to 1 and others from 0 to infinity.
 
-// The formulas for Rothwell approach and code for small z are based on
-// https://github.com/stan-dev/stan/wiki/Stan-Development-Meeting-Agenda/0ca4e1be9f7fc800658bfbd97331e800a4f50011
-// Which is in turn based on Equation 26 of Rothwell: Computation of the
-// logarithm of Bessel functions of complex argument and fractional order
-// https://scholar.google.com/scholar?cluster=2908870453394922596&hl=en&as_sdt=5,33&sciodt=0,33
+The formulas for Rothwell approach and code for small z are based on
+https://github.com/stan-dev/stan/wiki/Stan-Development-Meeting-Agenda/0ca4e1be9f7fc800658bfbd97331e800a4f50011
+Which is in turn based on Equation 26 of Rothwell: Computation of the
+logarithm of Bessel functions of complex argument and fractional order
+https://scholar.google.com/scholar?cluster=2908870453394922596&hl=en&as_sdt=5,33&sciodt=0,33
+*/
 
+//TODO(martinmodrak) Docs for the classes and internal functions
 template <typename T_v, typename T_z, typename T_u>
 class inner_integral_rothwell {
  private:
@@ -76,7 +63,7 @@ class inner_integral_rothwell {
   T_z z;
 
  public:
-  typedef typename boost::math::tools::promote_args<T_v, T_z, T_u>::type T_Ret;
+  typedef typename stan::return_type<T_v, T_z, T_u>::type T_Ret;
 
   inner_integral_rothwell(const T_v &v, const T_z &z) : v(v), z(z) {}
 
@@ -86,29 +73,28 @@ class inner_integral_rothwell {
 
     constexpr unsigned int n = 8;
 
-    auto v_mhalf = v - 0.5;
-    auto neg2v_m1 = -2.0 * v - 1.0;
-    auto beta = static_cast<double>(2 * n) / (2.0 * v + 1.0);
+    const auto v_mhalf = v - 0.5;
+    const auto neg2v_m1 = -2.0 * v - 1.0;
+    const auto beta = static_cast<double>(2 * n) / (2.0 * v + 1.0);
 
-    T_Ret value;
     T_Ret uB = pow(u, beta);
     T_Ret first
         = beta * exp(-uB) * pow(2.0 * z + uB, v_mhalf) * boost::math::pow<n - 1>(u);
-    T_Ret second = exp(-1.0 / u);
-    if (non_zero(second)) {
-      //    if (abs(second) > 0) {
+    T_u inv_u = -1.0 / u; //Not using inv because T_u is either double or complex
+    T_Ret second = exp(inv_u);
+    if (abs(second) > 0)  {
       second = second * pow(u, neg2v_m1);
-      if (is_inf(second)) {
-        second = exp(-1.0 / u + neg2v_m1 * log(u));
+      if (is_scal_infinite(second)) {
+        second = exp(inv_u + neg2v_m1 * log(u));
       }
       second = second * pow(2.0 * z * u + 1.0, v_mhalf);
     }
-    value = first + second;
 
-    return value;
+    return first + second;
   }
 
   T_Ret integrate() {
+    //TODO(martinmodrak) use T_u directly once the code settles
     typedef T_u value_type;
     value_type tolerance
         = std::sqrt(std::numeric_limits<value_type>::epsilon());
@@ -117,6 +103,7 @@ class inner_integral_rothwell {
     value_type L1;
     size_t levels;
 
+    //TODO(martinmodrak) check if new version of integrate_1d is not enough
     boost::math::quadrature::tanh_sinh<value_type> integrator;
     T_Ret value = integrator.integrate(*this, 0.0, 1.0, tolerance, &error, &L1,
                                        &levels);
@@ -131,9 +118,9 @@ class inner_integral_rothwell {
 };
 
 template <typename T_v, typename T_z>
-typename boost::math::tools::promote_args<T_v, T_z>::type compute_lead_rothwell(
+typename stan::return_type<T_v, T_z>::type compute_lead_rothwell(
     const T_v &v, const T_z &z) {
-  typedef typename boost::math::tools::promote_args<T_v, T_z>::type T_Ret;
+  typedef typename stan::return_type<T_v, T_z>::type T_Ret;
 
   using std::exp;
   using std::lgamma;
@@ -148,9 +135,9 @@ typename boost::math::tools::promote_args<T_v, T_z>::type compute_lead_rothwell(
 }
 
 template <typename T_v, typename T_z>
-typename boost::math::tools::promote_args<T_v, T_z>::type
+typename stan::return_type<T_v, T_z>::type
 compute_log_integral_rothwell(const T_v &v, const T_z &z) {
-  typedef typename boost::math::tools::promote_args<T_v, T_z>::type T_Ret;
+  typedef typename stan::return_type<T_v, T_z>::type T_Ret;
 
   inner_integral_rothwell<T_v, T_z, double> f(v, z);
   return log(f.integrate());
@@ -170,24 +157,26 @@ var compute_log_integral_rothwell(const var &v, const double &z) {
 }
 
 template <typename T_v, typename T_z>
-typename boost::math::tools::promote_args<T_v, T_z>::type compute_rothwell(
+typename stan::return_type<T_v, T_z>::type compute_rothwell(
     const T_v &v, const T_z &z) {
-  typedef typename boost::math::tools::promote_args<T_v, T_z>::type T_Ret;
+  typedef typename stan::return_type<T_v, T_z>::type T_Ret;
 
   T_v lead = compute_lead_rothwell(v, z);
   T_v log_integral = compute_log_integral_rothwell(v, z);
   return lead + log_integral;
 }
 
-// Formula 1.10 of
-// Temme, Journal of Computational Physics, vol 19, 324 (1975)
-// https://doi.org/10.1016/0021-9991(75)90082-0
-// Also found on wiki at
-// https://en.wikipedia.org/w/index.php?title=Bessel_function&oldid=888330504#Asymptotic_forms
+/* 
+ Formula 1.10 of
+ Temme, Journal of Computational Physics, vol 19, 324 (1975)
+ https://doi.org/10.1016/0021-9991(75)90082-0
+ Also found on wiki at
+ https://en.wikipedia.org/w/index.php?title=Bessel_function&oldid=888330504#Asymptotic_forms
+ */
 template <typename T_v>
 T_v asymptotic_large_v(const T_v &v, const double &z) {
-  using std::lgamma;
-  using std::log;
+  using stan::math::lgamma;
+  using stan::math::log;
 
   // return 0.5 * (log(stan::math::pi()) - log(2) - log(v)) - v * (log(z) -
   // log(2) - log(v));
@@ -537,28 +526,26 @@ T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z) {
   }
 
   T_v v_ = fabs(v);
-  switch (choose_computation_type(value_of(v_), value_of(z))) {
-    case ComputationType::Rothwell: {
-      return compute_rothwell(v_, z);
-    }
-    case ComputationType::Asymp_v: {
-      return asymptotic_large_v(v_, z);
-    }
-    case ComputationType::Asymp_z: {
-      return asymptotic_large_z(v_, z);
-    }
-    case ComputationType::IntegralGamma: {
-      return integral_gamma(v_, z);
-    }
-    case ComputationType::TrapezoidCosh: {
+  ComputationType ctype = choose_computation_type(value_of(v_), value_of(z));
+  if(ctype == ComputationType::Rothwell) {
+    return compute_rothwell(v_, z);
+  } 
+  if(ctype == ComputationType::Asymp_v) {
+    return asymptotic_large_v(v_, z);
+  } 
+  if(ctype == ComputationType::Asymp_z) {
+    return asymptotic_large_z(v_, z);
+  } 
+  if(ctype == ComputationType::IntegralGamma) {
+    return integral_gamma(v_, z);
+  } 
+  if(ctype == ComputationType::TrapezoidCosh) {
       return trapezoid_cosh(v_, z);
-    }
-    default: {
-      stan::math::domain_error("log_modified_bessel_second_kind_frac",
-                               "Invalid computation type ", 0, "");
-      return asymptotic_large_v(v_, z);
-    }
   }
+
+  stan::math::domain_error("log_modified_bessel_second_kind_frac",
+                            "Invalid computation type ", 0, "");
+  return asymptotic_large_v(v_, z);
 }
 
 template <typename T_v>

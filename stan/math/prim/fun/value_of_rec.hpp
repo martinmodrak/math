@@ -43,6 +43,20 @@ inline double value_of_rec(const T x) {
 inline double value_of_rec(double x) { return x; }
 
 /**
+ * Return the specified argument.
+ *
+ * <p>See <code>value_of(T)</code> for a polymorphic
+ * implementation using static casts.
+ *
+ * <p>This inline pass-through no-op should be compiled away.
+ *
+ * @param x Specified value.
+ * @return Specified value.
+ */
+template <typename T>
+inline std::complex<T> value_of_rec(const std::complex<T>& x) { return x; }
+
+/**
  * Convert a std::vector of type T to a std::vector of doubles.
  *
  * T must implement value_of_rec. See
