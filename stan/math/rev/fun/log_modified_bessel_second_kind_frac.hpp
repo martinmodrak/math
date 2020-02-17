@@ -9,6 +9,8 @@
 #include <stan/math/prim/fun/log1p_exp.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
 #include <stan/math/prim/fun/log_modified_bessel_first_kind.hpp>
+#include <test/unit/math/relative_tolerance.hpp>
+
 
 #include <stan/math/rev/core.hpp>
 #include <stan/math/rev/fun/cos.hpp>
@@ -316,24 +318,93 @@ var integral_gamma(const var &v, const double &z) {
 //Using trapezoidal rule from https://arxiv.org/pdf/1209.1547.pdf
 
 template <typename T>
-T logcosh(const T& x) {
+inline T logcosh(const T& x) {
   //By bgoodri
   return x + log1p_exp(-2 * x) - log(2);
 }
 
 template <typename T_v>
+inline T_v cosh_integral(const T_v &v, const double &z, const double &x) {
+  return logcosh(v * x) - z * cosh(x);
+}
+
+template <typename T_v>
 T_v trapezoid_cosh(const T_v &v, const double &z) {
   const double& approximate_maximum = std::asinh(value_of(v) / z);
-  const int max_steps = 5000;
-  //const double& h = v > 100 ? (approximate_maximum / (0.5 * max_steps)) : 5e-2;
-  const double& h = approximate_maximum / (0.1 * max_steps);
+
+   boost::uintmax_t maxit = 20;
+   using boost::math::tools::newton_raphson_iterate;
+
+  double v_ = value_of(v);
+
+  // double ub = 1.0;
+  
+  // while ( -z * sinh(ub) + v_ * tanh(ub * v_) > 0 ) {
+  //    ub *= 2.0;
+  // }
+
+  // auto arg_max = newton_raphson_iterate(
+  //   [&](double t){
+  //     auto sinh_t = sinh(t);
+  //     auto v_t = v_ * t;
+  //     auto tanh_vt = tanh(v_t);
+  //     auto cosh_vt = cosh(v_t);
+  //     auto z_sinh_t = z * sinh_t;
+  //     auto value = v_ * tanh_vt - z_sinh_t;
+  //     auto ratio = v_ / cosh_vt;
+  //     auto ratio2 = ratio * ratio;
+  //     auto D1 = ratio2 - z * cosh(t);
+  //     return std::make_tuple(value, D1);
+  //   }, approximate_maximum, ub > 1.0 ? 0.5 * ub : 0, ub, 8, maxit);
+  
+  // const double log2 = log(2.0);
+  // // log(cosh(x)) == x + log1p(exp(-2 * x)) - log(2)
+  // auto value_at_maximum = logcosh(v * arg_max)
+  //            - z * cosh(arg_max);
+
+  constexpr int max_doublings = 13;
+  const stan::test::relative_tolerance tolerance = 1e-10;
+  const int max_terms = boost::math::pow<max_doublings>(2);
+
   std::vector<T_v> terms;
-  terms.reserve(max_steps);
-  for(int n = 0; n < max_steps; n++) {
-    const double x = n * h;
-    const T_v last_term = logcosh(v * x) - z * cosh(x);
-    terms.push_back(last_term);
-    //TODO(martinmodrak) create some sensible stopping criterion
+  terms.reserve(max_terms);
+
+  double h = approximate_maximum;
+  double trapezoid_ub = approximate_maximum;
+  terms.push_back(cosh_integral(v, z, 0));
+  double last_value = value_of(terms[0]) + std::log(h);
+
+  bool doubling_ub_helps = true;
+  bool halving_h_helps = true;
+  for(int doubling = 0; doubling < max_doublings; doubling++) {
+    bool should_double_ub = !halving_h_helps || (doubling % 2) == 0;
+    if(doubling_ub_helps && should_double_ub) {
+      size_t n_previous_terms = terms.size();
+      for(size_t n = 0; n < n_previous_terms; ++n) {
+        const double x = trapezoid_ub + n * h;
+        const T_v last_term = cosh_integral(v, z, x);
+        terms.push_back(last_term);
+      }
+      trapezoid_ub *= 2;
+      double new_value = value_of(log_sum_exp(terms)) + std::log(h);
+      if(fabs(new_value - last_value) < tolerance.inexact(new_value, last_value)) {
+        doubling_ub_helps = false;
+      }      
+      last_value = new_value;
+    } else if (halving_h_helps) {
+      size_t n_previous_terms = terms.size();
+      for(size_t n = 0; n < n_previous_terms; ++n) {
+        const double x = ((n * 2) + 1) * h * 0.5;
+        const T_v last_term = cosh_integral(v, z, x);
+        terms.push_back(last_term);
+      }
+      h *= 0.5;
+      double new_value = value_of(log_sum_exp(terms)) + std::log(h);
+      if(fabs(new_value - last_value) < tolerance.inexact(new_value, last_value)) {
+        halving_h_helps = false;
+      }
+      last_value = new_value;
+    }
   }
   return log_sum_exp(terms) + std::log(h);
 }
@@ -463,10 +534,10 @@ const double gamma_low_z = 0.01;
 const double gamma_low_v = 0.001;
 
 const double asymp_v_slope = 1;
-const double asymp_v_intercept = 11;
+const double asymp_v_intercept = 8;
 
 const double asymp_z_slope = 1;
-const double asymp_z_intercept = -2;
+const double asymp_z_intercept = -3;
 const double asymp_z_log_min_v = 10;
 
 const double rothwell_max_v = 50;
