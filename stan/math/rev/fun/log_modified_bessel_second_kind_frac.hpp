@@ -8,6 +8,7 @@
 #include <stan/math/prim/fun/log_diff_exp.hpp>
 #include <stan/math/prim/fun/log1p_exp.hpp>
 #include <stan/math/prim/fun/value_of.hpp>
+#include <stan/math/prim/fun/log_modified_bessel_first_kind.hpp>
 
 #include <stan/math/rev/core.hpp>
 #include <stan/math/rev/fun/cos.hpp>
@@ -35,6 +36,8 @@
 namespace stan {
 namespace math {
 
+template <typename T_v>
+T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z);
 
 namespace besselk_internal {
 
@@ -192,26 +195,6 @@ T_v asymptotic_large_z(const T_v &v, const double &z) {
   const double log_z = log(z);
   const double base = 0.5 * (log(pi()) - log(2) - log_z) - z; 
 
-  //Choosing max terms to avoid negative values
-   //const int max_terms = std::min(1000, static_cast<int>(floor(value_of(v) + 0.5)));
-
-
-  // std::vector<T_v> log_sum_terms;
-  // log_sum_terms.reserve(max_terms);
-  // log_sum_terms.push_back(0);
-  
-  // T_v log_v_sq_4 = 2 * (log(v) + log(2));
-  // T_v log_a_k_z_k = 0;  
-  // for (int k = 1; k < max_terms; k++) {
-  //   log_a_k_z_k += log_diff_exp(log_v_sq_4, 2 * log(2 * k - 1)) - log(k) - log(z) - log(8);
-  //   log_sum_terms.push_back(log_a_k_z_k);
-  //   //TODO(martinmodrak) figure out a good stopping criterion
-  //   // if(log_a_k_z_k < 30) {
-  //   //   break;
-  //   // }
-  // }
-  // return base + log_sum_exp(log_sum_terms);
-
   const int max_terms = 50;
   T_v series_sum(1);
   T_v a_k_z_k(1);
@@ -226,6 +209,62 @@ T_v asymptotic_large_z(const T_v &v, const double &z) {
   }
   return base + log(series_sum);
 }
+
+// Formula 10.40.2 from https://dlmf.nist.gov/10.40, log formulation
+template <typename T_v>
+T_v asymptotic_large_z_log(const T_v &v, const double &z) {
+  using std::log;
+  using std::pow;
+
+  const double log_z = log(z);
+  const double base = 0.5 * (log(pi()) - log(2) - log_z) - z; 
+
+  //Choosing max terms to avoid negative values
+   const int max_terms = std::min(1000, static_cast<int>(floor(value_of(v) + 0.5)));
+
+
+  std::vector<T_v> log_sum_terms;
+  log_sum_terms.reserve(max_terms);
+  log_sum_terms.push_back(0);
+  
+  T_v log_v_sq_4 = 2 * (log(v) + log(2));
+  T_v log_a_k_z_k = 0;  
+  for (int k = 1; k < max_terms; k++) {
+    log_a_k_z_k += log_diff_exp(log_v_sq_4, 2 * log(2 * k - 1)) - log(k) - log(z) - log(8);
+    log_sum_terms.push_back(log_a_k_z_k);
+    //TODO(martinmodrak) figure out a good stopping criterion
+    // if(log_a_k_z_k < 30) {
+    //   break;
+    // }
+  }
+  return base + log_sum_exp(log_sum_terms);
+}
+
+// Connection formula 10.27.4 https://dlmf.nist.gov/10.27
+template <typename T_v>
+T_v first_kind(const T_v &v, const double &z) {
+  return -stan::math::LOG_TWO + stan::math::LOG_PI - log(sin(v * stan::math::pi())) +
+    log_diff_exp(log_modified_bessel_first_kind(-v, z), log_modified_bessel_first_kind(v, z));
+}
+
+template <typename T_v>
+T_v recurrence_formula_small_v_small_z(const T_v &v, const double &z) {
+    T_v log_K_vm1
+        = log_modified_bessel_second_kind_frac(v - 1, z);
+
+    T_v log_K_vp1
+        = log_modified_bessel_second_kind_frac(v + 1, z);
+
+  return log(z) - stan::math::LOG_TWO - log(v)
+                         + log_diff_exp(log_K_vp1, log_K_vm1);
+}
+
+// Formula 10.30.2 https://dlmf.nist.gov/10.30
+template <typename T_v>
+T_v asymp_small_z(const T_v &v, const double &z) {
+  return -stan::math::LOG_TWO + lgamma(v) - v * (-stan::math::LOG_TWO + log(z));
+}
+
 
 template <typename T_v>
 inline T_v log_integral_gamma_func(const T_v &v, const double &z, const double &t, const double &log_offset = 0) {
@@ -415,7 +454,7 @@ T_v trapezoid_cosh(const T_v &v, const double &z) {
 
 // The code to choose computation method is separate, because it is
 // referenced from the test code.
-enum class ComputationType { Rothwell, Asymp_v, Asymp_z, IntegralGamma, TrapezoidCosh };
+enum class ComputationType { Rothwell, Asymp_v, Asymp_z, Asymp_z_log, IntegralGamma, TrapezoidCosh, FirstKind, Recurrence_Small_V_Z , SmallZ};
 
 
 const double gamma_max_z = 200;
@@ -427,7 +466,8 @@ const double asymp_v_slope = 1;
 const double asymp_v_intercept = 11;
 
 const double asymp_z_slope = 1;
-const double asymp_z_intercept = -4;
+const double asymp_z_intercept = -2;
+const double asymp_z_log_min_v = 10;
 
 const double rothwell_max_v = 50;
 const double rothwell_max_z = 100000;
@@ -466,8 +506,11 @@ inline ComputationType choose_computation_type(const double &v,
   if (v_ > z) {
     return ComputationType::Asymp_v;
   } 
-
+  if (v_ > asymp_z_log_min_v) {
+    return ComputationType::Asymp_z_log;
+  }
   return ComputationType::Asymp_z;
+
   
   // if (v_ >= rothwell_max_v &&  
   //     (log_v > asymp_v_slope * log_z + asymp_v_intercept)) {
@@ -516,11 +559,15 @@ T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z) {
   using besselk_internal::ComputationType;
   using besselk_internal::asymptotic_large_v;
   using besselk_internal::asymptotic_large_z;
+  using besselk_internal::asymptotic_large_z_log;
+  using besselk_internal::first_kind;
+  using besselk_internal::recurrence_formula_small_v_small_z;
   using besselk_internal::integral_gamma;
   using besselk_internal::check_params;
   using besselk_internal::choose_computation_type;
   using besselk_internal::compute_rothwell;
   using besselk_internal::trapezoid_cosh;
+  using besselk_internal::asymp_small_z;
   using std::fabs;
   using std::pow;
 
@@ -541,12 +588,25 @@ T_v log_modified_bessel_second_kind_frac(const T_v &v, const double &z) {
   if(ctype == ComputationType::Asymp_z) {
     return asymptotic_large_z(v_, z);
   } 
+  if(ctype == ComputationType::Asymp_z_log) {
+    return asymptotic_large_z_log(v_, z);
+  } 
   if(ctype == ComputationType::IntegralGamma) {
     return integral_gamma(v_, z);
   } 
   if(ctype == ComputationType::TrapezoidCosh) {
       return trapezoid_cosh(v_, z);
   }
+  if(ctype == ComputationType::FirstKind) {
+      return first_kind(v_, z);
+  }
+  if(ctype == ComputationType::Recurrence_Small_V_Z) {
+      return recurrence_formula_small_v_small_z(v_, z);
+  }
+  if(ctype == ComputationType::SmallZ) {
+    return asymp_small_z(v_,z);
+  }
+  
 
   stan::math::domain_error("log_modified_bessel_second_kind_frac",
                             "Invalid computation type ", 0, "");
